@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* Colores base; el modo oscuro sigue la preferencia del sistema operativo */
+body {
+  @apply bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100;
+}
