@@ -1,0 +1,171 @@
+import { useState } from 'react'
+import { Link } from 'react-router'
+import { useCourses } from '../hooks/useCourses'
+import { aInputDatetime, deInputDatetime } from '../lib/fechas'
+import { recortarHora } from '../lib/tipos'
+import CampoSelect from './CampoSelect'
+import CampoTexto from './CampoTexto'
+import SelectorTipo from './SelectorTipo'
+
+// Formulario compartido por "Nuevo pendiente" y "Editar pendiente".
+//   inicial:   el pendiente a editar (o undefined si es nuevo)
+//   onGuardar: recibe los campos listos para Supabase; si falla, lanza un error
+export default function TareaForm({ inicial, onGuardar }) {
+  const { cursos } = useCourses()
+  const [titulo, setTitulo] = useState(inicial?.titulo ?? '')
+  const [descripcion, setDescripcion] = useState(inicial?.descripcion ?? '')
+  const [tipo, setTipo] = useState(inicial?.tipo ?? 'tarea')
+  const [cursoId, setCursoId] = useState(inicial?.course_id ?? '')
+  const [prioridadBase, setPrioridadBase] = useState(inicial?.prioridad_base ?? 'media')
+  const [fechaEntrega, setFechaEntrega] = useState(aInputDatetime(inicial?.fecha_entrega))
+  const [fechaActividad, setFechaActividad] = useState(inicial?.fecha_actividad ?? '')
+  const [horaInicio, setHoraInicio] = useState(recortarHora(inicial?.hora_inicio))
+  const [horaFin, setHoraFin] = useState(recortarHora(inicial?.hora_fin))
+  const [error, setError] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  const esEntrega = tipo === 'tarea'
+
+  async function onSubmit(e) {
+    e.preventDefault()
+    setError('')
+
+    if (!esEntrega && horaFin <= horaInicio) {
+      setError('La hora de fin debe ser posterior a la hora de inicio.')
+      return
+    }
+
+    setEnviando(true)
+    try {
+      // Los campos que no corresponden al tipo se guardan en null,
+      // así al cambiar de tipo no quedan datos viejos.
+      await onGuardar({
+        titulo: titulo.trim(),
+        descripcion: descripcion.trim() || null,
+        tipo,
+        prioridad_base: prioridadBase,
+        course_id: esEntrega ? cursoId || null : null,
+        fecha_entrega: esEntrega ? deInputDatetime(fechaEntrega) : null,
+        fecha_actividad: esEntrega ? null : fechaActividad,
+        hora_inicio: esEntrega ? null : horaInicio,
+        hora_fin: esEntrega ? null : horaFin,
+      })
+    } catch {
+      setError('No se pudo guardar. Inténtalo de nuevo.')
+      setEnviando(false)
+    }
+    // Si todo sale bien, la página que nos usa navega a otro lado.
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <SelectorTipo valor={tipo} onChange={setTipo} />
+
+      <CampoTexto
+        id="titulo"
+        label="Título"
+        type="text"
+        required
+        maxLength={150}
+        value={titulo}
+        onChange={(e) => setTitulo(e.target.value)}
+      />
+
+      <div>
+        <label htmlFor="descripcion" className="mb-1 block text-sm font-medium">
+          Descripción (opcional)
+        </label>
+        <textarea
+          id="descripcion"
+          rows={3}
+          value={descripcion}
+          onChange={(e) => setDescripcion(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-950"
+        />
+      </div>
+
+      {esEntrega ? (
+        <>
+          <CampoSelect id="curso" label="Curso (opcional)" value={cursoId} onChange={(e) => setCursoId(e.target.value)}>
+            <option value="">Sin curso</option>
+            {cursos.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </CampoSelect>
+          <CampoTexto
+            id="fecha-entrega"
+            label="Fecha y hora límite (hora de Lima)"
+            type="datetime-local"
+            required
+            value={fechaEntrega}
+            onChange={(e) => setFechaEntrega(e.target.value)}
+          />
+        </>
+      ) : (
+        <>
+          <CampoTexto
+            id="fecha-actividad"
+            label="Fecha"
+            type="date"
+            required
+            value={fechaActividad}
+            onChange={(e) => setFechaActividad(e.target.value)}
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <CampoTexto
+              id="hora-inicio"
+              label="Hora de inicio"
+              type="time"
+              required
+              value={horaInicio}
+              onChange={(e) => setHoraInicio(e.target.value)}
+            />
+            <CampoTexto
+              id="hora-fin"
+              label="Hora de fin"
+              type="time"
+              required
+              value={horaFin}
+              onChange={(e) => setHoraFin(e.target.value)}
+            />
+          </div>
+        </>
+      )}
+
+      <CampoSelect
+        id="prioridad"
+        label="Prioridad base"
+        value={prioridadBase}
+        onChange={(e) => setPrioridadBase(e.target.value)}
+      >
+        <option value="alta">Alta</option>
+        <option value="media">Media</option>
+        <option value="baja">Baja</option>
+      </CampoSelect>
+
+      {error && (
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={enviando}
+          className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+        >
+          {enviando ? 'Guardando…' : esEntrega ? 'Guardar entrega' : 'Guardar actividad'}
+        </button>
+        <Link
+          to="/tareas"
+          className="rounded-lg border border-gray-300 px-4 py-2.5 font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+        >
+          Cancelar
+        </Link>
+      </div>
+    </form>
+  )
+}

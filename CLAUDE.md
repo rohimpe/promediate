@@ -29,7 +29,7 @@ Habla conmigo **en español** y explícame brevemente lo que haces: estoy aprend
 ```
 src/
   components/     # piezas reutilizables (botones, tarjetas, modales)
-  pages/          # Inicio, Tareas, NuevaTarea, Checklist, Calendario, Archivos, Promedios, Login, Registro
+  pages/          # Inicio, Pendientes (Tareas.jsx), Nuevo pendiente (NuevaTarea.jsx), Checklist, Calendario, Archivos, Promedios, Login, Registro
   lib/            # supabaseClient.js, utilidades de fechas, cálculo de prioridad y promedios
   hooks/          # useAuth, useTasks, etc.
 supabase/
@@ -45,23 +45,29 @@ supabase/
 - Supabase Auth con correo y contraseña. (Más adelante: "Iniciar sesión con Google".)
 - Rutas protegidas: sin sesión, todo redirige a Login.
 
-### 2. Tareas y actividades
-- Formulario en su propia pestaña/página: título, descripción, tipo (`tarea` o `actividad`), curso (opcional), prioridad base (`alta`, `media`, `baja`), fecha y hora de entrega (si es tarea) o fecha de la actividad.
+### 2. Pendientes: entregas y actividades
+- **Nombres en pantalla** (en la base de datos y el código el valor sigue siendo `tarea` / `actividad`; el mapeo vive en `src/lib/tipos.js`):
+  - `tarea` → **Entrega**: algo de la universidad, con fecha y hora límite.
+  - `actividad` → **Actividad**: algo personal, con fecha, hora de inicio y hora de fin.
+  - La página del formulario se llama **"Nuevo pendiente"**; la lista, **"Pendientes"**. En la interfaz no se usa la palabra "tarea".
+- Formulario en su propia pestaña/página. Arriba, dos tarjetas grandes con ícono para elegir entre Entrega y Actividad; según la elección cambian los campos:
+  - **Entrega:** título, descripción, curso (opcional), prioridad base (`alta`, `media`, `baja`), fecha y hora límite. Botón: "Guardar entrega".
+  - **Actividad:** título, descripción, prioridad base, fecha, hora de inicio y hora de fin (el fin debe ser posterior al inicio). **Sin curso.** Botón: "Guardar actividad".
 - **Prioridad dinámica:** no se guarda, se *calcula* al mostrarla a partir de la prioridad base y los días restantes:
   - `baja` → `media` cuando faltan ≤ 5 días
   - `media` → `alta` cuando faltan ≤ 2 días
   - Vence hoy → siempre `alta`
   - (Reglas en una sola función en `src/lib/priority.js` para poder ajustarlas.)
 - Estados: `pendiente`, `completada`, `justificada` (con motivo obligatorio), `vencida` (calculado).
-- Fase 3: al crear una tarea se crea también el evento en Google Calendar.
+- Fase 3: al crear un pendiente se crea también el evento en Google Calendar.
 
 ### 3. Checklist diario
-- Muestra las tareas que vencen hoy y las actividades de hoy. No se "genera" con un proceso: se calcula según la fecha actual en Lima.
+- Muestra las entregas que vencen hoy y las actividades de hoy. No se "genera" con un proceso: se calcula según la fecha actual en Lima.
 - Marcar como completada, o **justificar** (escribir motivo) para quitarla de pendientes.
 - Las completadas se ven marcadas en el calendario de la app.
 
 ### 4. Resumen del día (pantalla de bienvenida)
-- La primera vez que el usuario abre la app cada día (desde las 00:00, hora de Lima) se muestra un modal/pestaña con todas las tareas del día ordenadas por prioridad calculada.
+- La primera vez que el usuario abre la app cada día (desde las 00:00, hora de Lima) se muestra un modal/pestaña con todos los pendientes del día ordenados por prioridad calculada.
 - La última fecha vista se guarda en la base de datos (`profiles.ultimo_resumen`) para que funcione igual en todos los dispositivos.
 
 ### 5. Promedios por curso
@@ -79,7 +85,7 @@ supabase/
 
 ### 6. Calendario (fase 3)
 - Leer eventos de Google Calendar del usuario y mostrarlos con el diseño de la app (vista semanal tipo horario).
-- Mostrar tareas de la app y su estado (completada / pendiente).
+- Mostrar los pendientes de la app (entregas y actividades) y su estado (completada / pendiente).
 
 ### 7. Archivos (fase 3)
 - Sección de carpetas (una por curso). Los archivos adjuntos se suben al Google Drive del usuario usando el permiso `drive.file`.
@@ -90,7 +96,18 @@ supabase/
 
 ### 9. IA (fase 4)
 - El usuario elige su proveedor y guarda su propia API key (cifrada, solo usada desde Edge Functions).
-- Preguntas como "¿qué tareas tengo el jueves?" usando sus tareas como contexto.
+- Preguntas como "¿qué tengo el jueves?" usando sus pendientes como contexto.
+
+### 10. Página de Inicio (al final de la Fase 1)
+Se construye cuando ya existan pendientes, checklist y promedios, porque junta datos de todos. Es la página `/`.
+- **Distribución en pantallas grandes:** dos columnas.
+  - **Izquierda:** calendario grande (vista mensual) que marca los días con pendientes; las entregas/actividades completadas se ven marcadas. Al elegir un día se ven sus pendientes.
+  - **Derecha:** tres tarjetas **apiladas**, cada una con un enlace **"Ver todo"**:
+    1. **Hoy:** los pendientes de hoy (hora de Lima) ordenados por prioridad calculada. "Ver todo" → Checklist.
+    2. **Próximas entregas:** las siguientes entregas pendientes por fecha límite. "Ver todo" → Pendientes.
+    3. **Promedios:** el promedio actual de cada curso (en rojo si es < 10.5). "Ver todo" → Promedios.
+- **En celular:** todo se apila en una sola columna. Orden: Hoy, Próximas entregas, Promedios y, al final, el calendario.
+- El calendario de Inicio usa solo datos de la app; la integración con Google Calendar es de la Fase 3.
 
 ---
 
@@ -98,7 +115,7 @@ supabase/
 
 - `profiles`: `id` (= auth.users.id), `nombre`, `ultimo_resumen` (date), `created_at`
 - `courses`: `id`, `user_id`, `nombre`, `color`, `created_at`
-- `tasks`: `id`, `user_id`, `course_id` (nullable), `titulo`, `descripcion`, `tipo`, `prioridad_base`, `fecha_entrega` (timestamptz, nullable), `fecha_actividad` (date, nullable), `estado`, `justificacion`, `completed_at`, `google_event_id` (nullable), `created_at`
+- `tasks`: `id`, `user_id`, `course_id` (nullable), `titulo`, `descripcion`, `tipo`, `prioridad_base`, `fecha_entrega` (timestamptz, nullable), `fecha_actividad` (date, nullable), `hora_inicio` y `hora_fin` (time, nullable; solo actividades), `estado`, `justificacion`, `completed_at`, `google_event_id` (nullable), `created_at`
 - `evaluations`: `id`, `user_id`, `course_id`, `parent_id` (nullable, apunta a `evaluations`), `nombre`, `peso` (numeric), `nota` (numeric 0–20, nullable), `orden`
 
 ---
