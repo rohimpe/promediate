@@ -1,8 +1,35 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import AuthProvider from './hooks/AuthProvider'
+import ProtectedRoute from './components/ProtectedRoute'
+import PublicRoute from './components/PublicRoute'
+import AppLayout from './components/AppLayout'
+import Inicio from './pages/Inicio'
+import Login from './pages/Login'
+import Registro from './pages/Registro'
+
 function App() {
   return (
-    <main className="flex min-h-svh items-center justify-center p-4">
-      <h1 className="text-2xl font-bold">Tablero de Vida</h1>
-    </main>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* Solo para quien NO tiene sesión */}
+          <Route element={<PublicRoute />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/registro" element={<Registro />} />
+          </Route>
+
+          {/* Solo para quien SÍ tiene sesión */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<Inicio />} />
+            </Route>
+          </Route>
+
+          {/* Cualquier otra ruta: al inicio (que redirige a /login si no hay sesión) */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
 
