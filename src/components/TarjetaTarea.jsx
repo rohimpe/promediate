@@ -1,4 +1,3 @@
-import { Link } from 'react-router'
 import { formatearFecha, formatearFechaHora } from '../lib/fechas'
 import { diasRestantes, estaVencida, prioridadActual } from '../lib/priority'
 import { NOMBRE_TIPO, recortarHora } from '../lib/tipos'
@@ -17,7 +16,8 @@ const ESTADOS = {
   justificada: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
 }
 
-export default function TarjetaTarea({ tarea, onBorrar }) {
+// "acciones": botones o formularios que muestra cada página debajo de la tarjeta.
+export default function TarjetaTarea({ tarea, acciones }) {
   const pendiente = tarea.estado === 'pendiente'
   const dias = diasRestantes(tarea)
   // Entrega: "18 oct, 14:30" · Actividad: "18 oct, 14:00–16:00"
@@ -79,20 +79,7 @@ export default function TarjetaTarea({ tarea, onBorrar }) {
         <p className="mt-2 text-sm whitespace-pre-line text-gray-700 dark:text-gray-300">{tarea.descripcion}</p>
       )}
 
-      <div className="mt-3 flex gap-2">
-        <Link
-          to={`/tareas/${tarea.id}/editar`}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
-        >
-          Editar
-        </Link>
-        <button
-          onClick={() => onBorrar(tarea)}
-          className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
-        >
-          Borrar
-        </button>
-      </div>
+      {acciones && <div className="mt-3">{acciones}</div>}
     </li>
   )
 }

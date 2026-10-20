@@ -46,7 +46,26 @@ export default function Tareas() {
 
       <ul className="space-y-3">
         {ordenarPorPrioridad(tareas).map((t) => (
-          <TarjetaTarea key={t.id} tarea={t} onBorrar={onBorrar} />
+          <TarjetaTarea
+            key={t.id}
+            tarea={t}
+            acciones={
+              <div className="flex gap-2">
+                <Link
+                  to={`/tareas/${t.id}/editar`}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+                >
+                  Editar
+                </Link>
+                <button
+                  onClick={() => onBorrar(t)}
+                  className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                >
+                  Borrar
+                </button>
+              </div>
+            }
+          />
         ))}
       </ul>
     </>

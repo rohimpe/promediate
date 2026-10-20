@@ -6,6 +6,7 @@ import AppLayout from './components/AppLayout'
 import Inicio from './pages/Inicio'
 import Login from './pages/Login'
 import Registro from './pages/Registro'
+import Hoy from './pages/Hoy'
 import Tareas from './pages/Tareas'
 import NuevaTarea from './pages/NuevaTarea'
 import EditarTarea from './pages/EditarTarea'
@@ -25,6 +26,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<Inicio />} />
+              <Route path="/hoy" element={<Hoy />} />
               <Route path="/tareas" element={<Tareas />} />
               <Route path="/tareas/nueva" element={<NuevaTarea />} />
               <Route path="/tareas/:id/editar" element={<EditarTarea />} />

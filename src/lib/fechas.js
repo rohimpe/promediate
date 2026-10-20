@@ -67,3 +67,20 @@ export function formatearFechaHora(timestamp) {
   const p = partesEnLima(new Date(timestamp))
   return `${formatearFecha(`${p.year}-${p.month}-${p.day}`)}, ${p.hour}:${p.minute}`
 }
+
+// 'YYYY-MM-DD' -> 'lunes 19 de octubre'
+export function formatearDiaLargo(fecha) {
+  // Mediodía de Lima: así el día no cambia aunque haya pequeñas diferencias de zona.
+  return new Date(`${fecha}T12:00:00${OFFSET_LIMA}`).toLocaleDateString('es-PE', {
+    timeZone: ZONA,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+}
+
+// 'YYYY-MM-DD' + n días -> 'YYYY-MM-DD' (en UTC, para que no influya la zona del navegador)
+export function sumarDias(fecha, n) {
+  const [y, m, d] = fecha.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}

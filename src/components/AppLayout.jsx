@@ -2,6 +2,7 @@ import { Outlet } from 'react-router'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
 import BarraNavegacion from './BarraNavegacion'
+import ResumenDelDia from './ResumenDelDia'
 
 // Estructura de las páginas privadas: barra superior con el botón de cerrar sesión.
 export default function AppLayout() {
@@ -32,6 +33,7 @@ export default function AppLayout() {
         </div>
       </header>
       <BarraNavegacion />
+      <ResumenDelDia />
       {/* pb-20: deja espacio para que la barra fija de abajo (celular) no tape el contenido */}
       <main className="mx-auto max-w-3xl p-4 pb-20 sm:pb-4">
         <Outlet />

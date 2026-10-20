@@ -3,9 +3,14 @@ import { Link } from 'react-router'
 import { useCourses } from '../hooks/useCourses'
 import { aInputDatetime, deInputDatetime } from '../lib/fechas'
 import { recortarHora } from '../lib/tipos'
+import { Atajos, AtajosFecha } from './Atajos'
 import CampoSelect from './CampoSelect'
 import CampoTexto from './CampoTexto'
+import SelectorHora from './SelectorHora'
 import SelectorTipo from './SelectorTipo'
+
+// Hora límite que se propone en las entregas nuevas.
+const HORA_POR_DEFECTO = '23:59'
 
 // Formulario compartido por "Nuevo pendiente" y "Editar pendiente".
 //   inicial:   el pendiente a editar (o undefined si es nuevo)
@@ -17,7 +22,11 @@ export default function TareaForm({ inicial, onGuardar }) {
   const [tipo, setTipo] = useState(inicial?.tipo ?? 'tarea')
   const [cursoId, setCursoId] = useState(inicial?.course_id ?? '')
   const [prioridadBase, setPrioridadBase] = useState(inicial?.prioridad_base ?? 'media')
-  const [fechaEntrega, setFechaEntrega] = useState(aInputDatetime(inicial?.fecha_entrega))
+  // La fecha límite se guarda como un solo instante (timestamptz), pero en el formulario
+  // la separamos en día + hora. aInputDatetime la convierte a hora de Lima: 'YYYY-MM-DDTHH:mm'.
+  const entregaInicial = aInputDatetime(inicial?.fecha_entrega)
+  const [fechaEntrega, setFechaEntrega] = useState(entregaInicial.slice(0, 10))
+  const [horaEntrega, setHoraEntrega] = useState(entregaInicial.slice(11) || HORA_POR_DEFECTO)
   const [fechaActividad, setFechaActividad] = useState(inicial?.fecha_actividad ?? '')
   const [horaInicio, setHoraInicio] = useState(recortarHora(inicial?.hora_inicio))
   const [horaFin, setHoraFin] = useState(recortarHora(inicial?.hora_fin))
@@ -30,9 +39,15 @@ export default function TareaForm({ inicial, onGuardar }) {
     e.preventDefault()
     setError('')
 
-    if (!esEntrega && horaFin <= horaInicio) {
-      setError('La hora de fin debe ser posterior a la hora de inicio.')
-      return
+    if (!esEntrega) {
+      if (!horaInicio || !horaFin) {
+        setError('Elige la hora de inicio y la hora de fin.')
+        return
+      }
+      if (horaFin <= horaInicio) {
+        setError('La hora de fin debe ser posterior a la hora de inicio.')
+        return
+      }
     }
 
     setEnviando(true)
@@ -45,7 +60,7 @@ export default function TareaForm({ inicial, onGuardar }) {
         tipo,
         prioridad_base: prioridadBase,
         course_id: esEntrega ? cursoId || null : null,
-        fecha_entrega: esEntrega ? deInputDatetime(fechaEntrega) : null,
+        fecha_entrega: esEntrega ? deInputDatetime(`${fechaEntrega}T${horaEntrega}`) : null,
         fecha_actividad: esEntrega ? null : fechaActividad,
         hora_inicio: esEntrega ? null : horaInicio,
         hora_fin: esEntrega ? null : horaFin,
@@ -94,14 +109,23 @@ export default function TareaForm({ inicial, onGuardar }) {
               </option>
             ))}
           </CampoSelect>
-          <CampoTexto
-            id="fecha-entrega"
-            label="Fecha y hora límite (hora de Lima)"
-            type="datetime-local"
-            required
-            value={fechaEntrega}
-            onChange={(e) => setFechaEntrega(e.target.value)}
-          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <CampoTexto
+                id="fecha-entrega"
+                label="Fecha límite"
+                type="date"
+                required
+                value={fechaEntrega}
+                onChange={(e) => setFechaEntrega(e.target.value)}
+              />
+              <AtajosFecha onElegir={setFechaEntrega} />
+            </div>
+            <div>
+              <SelectorHora id="hora-entrega" label="Hora límite (hora de Lima)" valor={horaEntrega} onChange={setHoraEntrega} />
+              <Atajos atajos={[{ texto: '23:59', valor: HORA_POR_DEFECTO }]} onElegir={setHoraEntrega} />
+            </div>
+          </div>
         </>
       ) : (
         <>
@@ -113,23 +137,10 @@ export default function TareaForm({ inicial, onGuardar }) {
             value={fechaActividad}
             onChange={(e) => setFechaActividad(e.target.value)}
           />
-          <div className="grid grid-cols-2 gap-4">
-            <CampoTexto
-              id="hora-inicio"
-              label="Hora de inicio"
-              type="time"
-              required
-              value={horaInicio}
-              onChange={(e) => setHoraInicio(e.target.value)}
-            />
-            <CampoTexto
-              id="hora-fin"
-              label="Hora de fin"
-              type="time"
-              required
-              value={horaFin}
-              onChange={(e) => setHoraFin(e.target.value)}
-            />
+          <AtajosFecha onElegir={setFechaActividad} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectorHora id="hora-inicio" label="Hora de inicio" valor={horaInicio} onChange={setHoraInicio} vacio />
+            <SelectorHora id="hora-fin" label="Hora de fin" valor={horaFin} onChange={setHoraFin} vacio />
           </div>
         </>
       )}
