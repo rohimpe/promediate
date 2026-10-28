@@ -13,6 +13,7 @@ import CursoEvaluaciones from './pages/CursoEvaluaciones'
 import Tareas from './pages/Tareas'
 import NuevaTarea from './pages/NuevaTarea'
 import EditarTarea from './pages/EditarTarea'
+import AvisoPWA from './components/AvisoPWA'
 
 function App() {
   return (
@@ -43,6 +44,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
+      <AvisoPWA />
     </BrowserRouter>
   )
 }

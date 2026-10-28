@@ -153,7 +153,7 @@ Junta datos de pendientes, checklist y promedios. Es la página `/`, la principa
   - [x] Checklist "Hoy" y resumen del día
   - [x] Promedios por curso
   - [x] Calendario de la app (pendientes) y página de Inicio
-  - [ ] PWA básica
+  - [x] PWA básica (`vite-plugin-pwa`; íconos en `public/`, aviso de actualización y pantalla sin conexión en `AvisoPWA.jsx`)
   - [ ] Despliegue en Vercel (confirmar)
 - [ ] **Fase 2:** recordatorios
 - [ ] **Fase 3:** Google Calendar y Google Drive
