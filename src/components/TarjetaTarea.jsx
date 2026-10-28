@@ -1,15 +1,8 @@
-import { formatearFecha, formatearFechaHora } from '../lib/fechas'
+import { formatearFecha, formatearFechaHora, textoPlazo } from '../lib/fechas'
 import { diasRestantes, estaVencida, prioridadActual } from '../lib/priority'
 import { NOMBRE_TIPO, recortarHora } from '../lib/tipos'
 import EtiquetaPrioridad from './EtiquetaPrioridad'
-
-function textoPlazo(dias) {
-  if (dias === null) return ''
-  if (dias === 0) return 'Hoy'
-  if (dias === 1) return 'Mañana'
-  if (dias > 1) return `En ${dias} días`
-  return dias === -1 ? 'Ayer' : `Hace ${-dias} días`
-}
+import EtiquetaVencida from './EtiquetaVencida'
 
 const ESTADOS = {
   completada: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
@@ -40,11 +33,7 @@ export default function TarjetaTarea({ tarea, acciones }) {
       <div className="flex items-start justify-between gap-3">
         <h2 className={`font-semibold ${pendiente ? '' : 'line-through'}`}>{tarea.titulo}</h2>
         <div className="flex shrink-0 gap-1.5">
-          {estaVencida(tarea) && (
-            <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900">
-              Vencida
-            </span>
-          )}
+          {estaVencida(tarea) && <EtiquetaVencida />}
           {pendiente ? (
             <EtiquetaPrioridad prioridad={prioridadActual(tarea)} />
           ) : (

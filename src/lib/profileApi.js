@@ -20,3 +20,14 @@ export async function guardarUltimoResumen(userId, fecha) {
     .upsert({ id: userId, ultimo_resumen: fecha })
   if (error) throw error
 }
+
+// Nombre del perfil, o null si no tiene (o no hay fila de perfil).
+export async function obtenerNombrePerfil(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('nombre')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw error
+  return data?.nombre?.trim() || null
+}

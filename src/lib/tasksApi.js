@@ -18,9 +18,15 @@ export async function obtenerTarea(id) {
   return data // null si no existe o no es del usuario
 }
 
+// Devuelve la fila creada (con su curso) para poder agregarla a la lista en pantalla.
 export async function crearTarea(campos) {
-  const { error } = await supabase.from('tasks').insert(campos)
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert(campos)
+    .select('*, courses(nombre, color)')
+    .single()
   if (error) throw error
+  return data
 }
 
 export async function actualizarTarea(id, campos) {

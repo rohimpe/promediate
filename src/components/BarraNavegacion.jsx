@@ -3,8 +3,10 @@ import { NavLink } from 'react-router'
 const ENLACES = [
   { to: '/', texto: 'Inicio', end: true },
   { to: '/hoy', texto: 'Hoy', end: true },
+  { to: '/calendario', texto: 'Calendario', end: true },
   { to: '/tareas', texto: 'Pendientes', end: true },
   { to: '/tareas/nueva', texto: 'Nuevo pendiente', end: true },
+  { to: '/promedios', texto: 'Promedios', end: false },
 ]
 
 // En celular: barra fija abajo (fácil de alcanzar con el pulgar).
@@ -22,7 +24,7 @@ export default function BarraNavegacion() {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `block px-1 py-3 text-center text-xs font-medium sm:px-4 sm:text-sm ${
+                `block px-1 py-3 text-center text-xs leading-tight font-medium sm:px-4 sm:text-sm ${
                   isActive
                     ? 'text-indigo-600 dark:text-indigo-400'
                     : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'

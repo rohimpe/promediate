@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import TareaForm from '../components/TareaForm'
+import PendienteForm from '../components/PendienteForm'
 import { actualizarTarea, obtenerTarea } from '../lib/tasksApi'
 
 export default function EditarTarea() {
@@ -23,10 +23,7 @@ export default function EditarTarea() {
     }
   }, [id])
 
-  async function guardar(campos) {
-    await actualizarTarea(id, campos)
-    navigate('/tareas')
-  }
+  const guardar = (campos) => actualizarTarea(id, campos)
 
   if (estado === 'cargando') return <p className="text-gray-600 dark:text-gray-400">Cargando…</p>
 
@@ -46,7 +43,7 @@ export default function EditarTarea() {
   return (
     <>
       <h1 className="mb-4 text-2xl font-bold">Editar pendiente</h1>
-      <TareaForm inicial={tarea} onGuardar={guardar} />
+      <PendienteForm inicial={tarea} onGuardar={guardar} onGuardado={() => navigate('/tareas')} />
     </>
   )
 }

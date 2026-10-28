@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { actualizarTarea, borrarTarea, listarTareas } from '../lib/tasksApi'
+import { actualizarTarea, borrarTarea, crearTarea, listarTareas } from '../lib/tasksApi'
 
-// Carga los pendientes del usuario y permite borrarlos o cambiarles campos.
-//   const { tareas, cargando, error, borrar, cambiar } = useTasks()
+// Carga los pendientes del usuario y permite crearlos, borrarlos o cambiarles campos.
+//   const { tareas, cargando, error, crear, borrar, cambiar } = useTasks()
 export function useTasks() {
   const [tareas, setTareas] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -19,6 +19,12 @@ export function useTasks() {
     }
   }, [])
 
+  // Crea un pendiente en Supabase y lo agrega a la lista en pantalla (sin recargar).
+  const crear = useCallback(async (campos) => {
+    const nueva = await crearTarea(campos)
+    setTareas((actuales) => [...actuales, nueva])
+  }, [])
+
   const borrar = useCallback(async (id) => {
     await borrarTarea(id)
     setTareas((actuales) => actuales.filter((t) => t.id !== id))
@@ -30,5 +36,5 @@ export function useTasks() {
     setTareas((actuales) => actuales.map((t) => (t.id === id ? { ...t, ...campos } : t)))
   }, [])
 
-  return { tareas, cargando, error, borrar, cambiar }
+  return { tareas, cargando, error, crear, borrar, cambiar }
 }

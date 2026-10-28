@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
 import BarraNavegacion from './BarraNavegacion'
@@ -7,6 +7,7 @@ import ResumenDelDia from './ResumenDelDia'
 // Estructura de las páginas privadas: barra superior con el botón de cerrar sesión.
 export default function AppLayout() {
   const { user } = useAuth()
+  const { pathname } = useLocation()
 
   async function cerrarSesion() {
     // Al cerrar sesión, onAuthStateChange avisa a AuthProvider y
@@ -35,7 +36,13 @@ export default function AppLayout() {
       <BarraNavegacion />
       <ResumenDelDia />
       {/* pb-20: deja espacio para que la barra fija de abajo (celular) no tape el contenido */}
-      <main className="mx-auto max-w-3xl p-4 pb-20 sm:pb-4">
+      {/* El calendario necesita más ancho para que quepan los 7 días de la semana;
+          Inicio lo comparte con tres tarjetas a su lado, así que es aún más ancha. */}
+      <main
+        className={`mx-auto p-4 pb-20 sm:pb-4 ${
+          pathname === '/' ? 'max-w-6xl' : pathname === '/calendario' ? 'max-w-5xl' : 'max-w-3xl'
+        }`}
+      >
         <Outlet />
       </main>
     </div>

@@ -84,3 +84,83 @@ export function sumarDias(fecha, n) {
   const [y, m, d] = fecha.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
 }
+
+// --- Para el calendario ---
+
+// Instante a partir de una fecha y hora de Lima: ('2026-10-19', '14:30' o '14:30:00') -> Date
+export function instanteLima(fecha, hora) {
+  return new Date(`${fecha}T${hora.slice(0, 5)}:00${OFFSET_LIMA}`)
+}
+
+// Minutos desde las 00:00 (hora de Lima) de un instante: 14:30 -> 870
+export function minutosEnLima(instante) {
+  const p = partesEnLima(instante)
+  return Number(p.hour) * 60 + Number(p.minute)
+}
+
+// 'HH:MM' (hora de Lima) de un instante
+export function horaEnLima(instante) {
+  const p = partesEnLima(instante)
+  return `${p.hour}:${p.minute}`
+}
+
+const DIAS_CORTOS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']
+
+// Día de la semana empezando en lunes: 0 = lunes … 6 = domingo.
+export function diaSemana(fecha) {
+  const [y, m, d] = fecha.split('-').map(Number)
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7
+}
+
+export function nombreDiaCorto(fecha) {
+  return DIAS_CORTOS[diaSemana(fecha)]
+}
+
+// Lunes de la semana que contiene a "fecha".
+export function inicioSemana(fecha) {
+  return sumarDias(fecha, -diaSemana(fecha))
+}
+
+export function diasEnMes(fecha) {
+  const [y, m] = fecha.split('-').map(Number)
+  return new Date(Date.UTC(y, m, 0)).getUTCDate()
+}
+
+export function inicioMes(fecha) {
+  return `${fecha.slice(0, 8)}01`
+}
+
+// Suma n meses. Si el día no existe en el mes nuevo (31 -> febrero), usa el último día.
+export function sumarMeses(fecha, n) {
+  const [y, m, d] = fecha.split('-').map(Number)
+  const primero = new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 8)
+  const dia = Math.min(d, diasEnMes(`${primero}01`))
+  return `${primero}${String(dia).padStart(2, '0')}`
+}
+
+// 'YYYY-MM-DD' -> 'octubre 2026'
+export function formatearMesAnio(fecha) {
+  return new Date(`${fecha}T12:00:00${OFFSET_LIMA}`).toLocaleDateString('es-PE', {
+    timeZone: ZONA,
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+// ('2026-10-19', '2026-10-25') -> '19 – 25 oct 2026' (o '28 sep – 4 oct 2026' si cruza de mes)
+export function formatearRango(desde, hasta) {
+  const [ya, ma, da] = desde.split('-').map(Number)
+  const [yb, mb, db] = hasta.split('-').map(Number)
+  const izq = ma === mb ? `${da}` : `${da} ${MESES[ma - 1]}`
+  const der = `${db} ${MESES[mb - 1]}`
+  return ya === yb ? `${izq} – ${der} ${yb}` : `${da} ${MESES[ma - 1]} ${ya} – ${der} ${yb}`
+}
+
+// Días restantes (ver diasRestantes en priority.js) -> 'Hoy', 'Mañana', 'En 3 días', 'Ayer', 'Hace 2 días'
+export function textoPlazo(dias) {
+  if (dias === null) return ''
+  if (dias === 0) return 'Hoy'
+  if (dias === 1) return 'Mañana'
+  if (dias > 1) return `En ${dias} días`
+  return dias === -1 ? 'Ayer' : `Hace ${-dias} días`
+}

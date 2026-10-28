@@ -2,17 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { dividirChecklist } from '../lib/checklist'
-import { formatearDiaLargo, formatearFechaHora, hoyEnLima } from '../lib/fechas'
+import { formatearDiaLargo, hoyEnLima } from '../lib/fechas'
 import { prioridadActual } from '../lib/priority'
 import { obtenerUltimoResumen, guardarUltimoResumen } from '../lib/profileApi'
 import { listarTareas } from '../lib/tasksApi'
-import { NOMBRE_TIPO, recortarHora } from '../lib/tipos'
+import { NOMBRE_TIPO, horarioTarea } from '../lib/tipos'
 import EtiquetaPrioridad from './EtiquetaPrioridad'
-
-function horario(t) {
-  if (t.tipo === 'tarea') return t.fecha_entrega ? formatearFechaHora(t.fecha_entrega).split(', ')[1] : ''
-  return t.hora_inicio && t.hora_fin ? `${recortarHora(t.hora_inicio)}–${recortarHora(t.hora_fin)}` : ''
-}
 
 // Modal de bienvenida: aparece la primera vez que se abre la app en el día (hora de Lima).
 // "Hoy" se compara con profiles.ultimo_resumen, que vive en la base de datos,
@@ -107,7 +102,7 @@ export default function ResumenDelDia() {
                   <p className="font-medium">{t.titulo}</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     {NOMBRE_TIPO[t.tipo]}
-                    {horario(t) && ` · ${horario(t)}`}
+                    {horarioTarea(t) && ` · ${horarioTarea(t)}`}
                   </p>
                 </div>
                 <EtiquetaPrioridad prioridad={prioridadActual(t, hoy)} />

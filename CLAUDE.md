@@ -73,21 +73,40 @@ supabase/
 - Al cerrar el modal (botón, Esc o clic afuera) se actualiza `profiles.ultimo_resumen` con la fecha de hoy en Lima.
 
 ### 5. Promedios por curso
-- Botón "Agregar curso". Cada curso tiene un **árbol de evaluaciones**: cada nodo tiene nombre y peso (%), y puede tener hijos o ser una hoja con nota.
-  - Ej.: Examen final 30% · Evaluación continua 70% → (PCs 40% · Tareas 30% · Proyecto 30%), y PCs → PC1 25%, PC2 25%…
+- Botón "Agregar curso". Cada curso tiene un **árbol de evaluaciones**: cada nodo tiene nombre y peso (%), y puede tener hijos o ser una hoja (prueba) con nota.
+- **Pesos ABSOLUTOS:** el peso de cada nodo es % del **curso entero**, no de su padre.
+  - Los nodos de primer nivel suman 100. Los hijos de un grupo suman el peso del grupo.
+  - Ej.: Examen final 30% · Evaluación continua 70% → (PCs 28% · Tareas 21% · Proyecto 21%), y PCs → PC1 14%, PC2 14%.
+  - Validación por nivel con tolerancia de 0.01: "Faltan 30% para completar los 70% de PEP" / "Sobran 5%: …" / "Faltan 10% para completar el 100% del curso".
+  - (Hasta el 22/10/2026 eran relativos; la migración `20261022000000_pesos_absolutos.sql` los convierte, grupo por grupo.)
+- **Reparto de un grupo** (`evaluations.reparto`):
+  - `manual`: cada hijo tiene su peso guardado.
+  - `iguales`: los hijos se reparten el peso del grupo; su `peso` guardado se ignora (se calcula, no se guarda), así que se reequilibran solos al agregar o borrar. Botón **"+ Subdivisiones iguales"** → "Crear N subdivisiones iguales" con nombre base (Laboratorio → Laboratorio 1…6). Al volver a manual, cada hijo guarda su parte igual como peso.
+- **Descartar las N peores** (`evaluations.descartar_peores`, solo en modo iguales):
+  - N va de 0 a (hijos − 1); se ajusta solo si cambia la cantidad de hijos. No hay un número fijo de pruebas: son las subdivisiones que el usuario creó.
+  - Con n hijos y N descartes cuentan las n − N mejores, y cada una vale (peso del grupo) / (n − N).
+  - Las pruebas sin nota cuentan como 0 al calcular la nota final, así que se descartan primero: si hay menos de n − N notas ingresadas, cuentan todas. (Descartar siempre N entre las ingresadas haría que la nota *baje* al ingresar una nota nueva.)
+  - Las descartadas se ven tachadas con la etiqueta "descartada".
 - Se pueden agregar, editar, anidar y borrar nodos.
-- Validación: los pesos de los hijos de cada nodo deben sumar 100% (mostrar aviso si no).
 - Escala vigesimal (0–20). Mostrar:
-  - **Promedio actual:** solo con notas ingresadas, normalizando los pesos de lo ya evaluado.
-  - **Puntos acumulados:** aporte real hacia la nota final.
-  - Extra: "nota mínima que necesitas en lo que falta para aprobar".
-- Promedio < 10.5 se muestra en **rojo** (desaprobado).
-- En el Inicio se ven solo los promedios de cada curso.
+  - **Nota final** (el número grande): los **puntos acumulados** sobre 20; lo que aún no tiene nota cuenta como 0.
+  - **Máximo posible:** la nota final si todo lo que falta sale 20.
+  - **"Te faltan X puntos para aprobar"** (o **"Aprobado ✓"** si la nota final ya es ≥ 10.5) y una línea pequeña **"Mejor nota: N en <prueba>"**.
+  - **Nota mínima:** "Necesitas sacar al menos X en lo que falta" = la menor nota que, sacada en todas las pruebas pendientes, lleva a 10.5 (solo si todos los niveles cuadran).
+- **Cómo se calcula** (`src/lib/grades.js`, nada se guarda): se evalúa el curso suponiendo que cada prueba sin nota saca *x*. Con x = 0 sale la nota final; con x = 20, el máximo; la nota mínima es el menor x que llega a 10.5 (búsqueda por bisección). Así el descarte funciona igual en los tres casos. El promedio de cada rama (puntos / peso evaluado que cuenta) se muestra en su encabezado.
+- **Colores de la nota final** (los mismos en la página del curso, la lista de cursos y el Inicio, con `NotaFinal` y `estadoNota`):
+  - **Verde:** nota final ≥ 10.5 (comparada con 2 decimales, como se ve en pantalla).
+  - **Rojo:** solo si el máximo posible es < 10.5 (ni sacando 20 en lo que falta se aprueba) y todos los niveles cuadran.
+  - **Neutro:** en cualquier otro caso (todavía se puede aprobar).
+- **Árbol en pantalla:** las ramas con subdivisiones aparecen cerradas, con una flecha; se abren al tocar el encabezado (nombre, promedio y peso). Qué ramas están abiertas se recuerda por curso en `localStorage`. Los botones Editar, + Subdivisión, + Subdivisiones iguales y Borrar siempre están visibles. Al abrir un grupo se ven sus controles: Reparto (Manual / Partes iguales) y, en partes iguales, "Descartar las N peores".
+- **Notas en el mismo lugar:** una prueba sin nota muestra "+ Nota" (campo 0–20 con decimales; Enter guarda, Esc cancela); con nota se muestra un chip clicable para corregirla y una "×" para borrarla. El formulario de editar rama no maneja notas.
+- En el Inicio se ve solo la nota final de cada curso (con los mismos colores).
 - Fase 4: subir el sílabo en PDF y que la IA proponga el árbol; el usuario lo revisa antes de guardar.
 
 ### 6. Calendario (fase 3)
 - Leer eventos de Google Calendar del usuario y mostrarlos con el diseño de la app (vista semanal tipo horario).
 - Mostrar los pendientes de la app (entregas y actividades) y su estado (completada / pendiente).
+- **Creación rápida** (`NuevoPendienteModal` + `PendienteForm`, el mismo formulario de Nuevo/Editar pendiente): tocar un espacio vacío de un día abre el modal con esa fecha; en la cuadrícula horaria rellena inicio (al cuarto de hora más cercano) y fin (+1 h) como Actividad; el encabezado del día crea una Entrega 23:59; en la vista mensual cada casilla tiene un "+"; el botón "+ Nuevo" usa la fecha de hoy. En la vista semanal el *número* del día abre la vista de ese día. Al guardar, `useTasks.crear` agrega la fila a la lista sin recargar.
 
 ### 7. Archivos (fase 3)
 - Sección de carpetas (una por curso). Los archivos adjuntos se suben al Google Drive del usuario usando el permiso `drive.file`.
@@ -100,15 +119,19 @@ supabase/
 - El usuario elige su proveedor y guarda su propia API key (cifrada, solo usada desde Edge Functions).
 - Preguntas como "¿qué tengo el jueves?" usando sus pendientes como contexto.
 
-### 10. Página de Inicio (al final de la Fase 1)
-Se construye cuando ya existan pendientes, checklist y promedios, porque junta datos de todos. Es la página `/`.
-- **Distribución en pantallas grandes:** dos columnas.
-  - **Izquierda:** calendario grande (vista mensual) que marca los días con pendientes; las entregas/actividades completadas se ven marcadas. Al elegir un día se ven sus pendientes.
-  - **Derecha:** tres tarjetas **apiladas**, cada una con un enlace **"Ver todo"**:
-    1. **Hoy:** los pendientes de hoy (hora de Lima) ordenados por prioridad calculada. "Ver todo" → Hoy.
-    2. **Próximas entregas:** las siguientes entregas pendientes por fecha límite. "Ver todo" → Pendientes.
-    3. **Promedios:** el promedio actual de cada curso (en rojo si es < 10.5). "Ver todo" → Promedios.
-- **En celular:** todo se apila en una sola columna. Orden: Hoy, Próximas entregas, Promedios y, al final, el calendario.
+### 10. Página de Inicio ✅ (hecha)
+Junta datos de pendientes, checklist y promedios. Es la página `/`, la principal tras iniciar sesión.
+- **Saludo:** "Hola, <nombre> 👋" y la fecha de hoy en español (hora de Lima). El nombre sale de `profiles.nombre`; si no tiene, la parte del correo antes de la @.
+- **Pantallas grandes (lg):** dos columnas.
+  - **Izquierda:** `CalendarView` en versión compacta: vista **semanal** con Anterior / Hoy / Siguiente (`CalendarioInicio`). Al tocar un evento se abre `PanelEvento` (completar, justificar, editar).
+  - **Derecha:** tres tarjetas **apiladas**, de **máximo 4 elementos** y con enlace **"Ver todo"**:
+    1. **Hoy:** pendientes de hoy por prioridad calculada, con **Completar** y **Justificar**, y el contador "X de Y completados" (completadas y justificadas cuentan como hechas). Si hay actividades vencidas de días anteriores, un aviso con enlace a Hoy. "Ver todo" → Hoy.
+    2. **Próximas entregas:** entregas pendientes por fecha límite, con curso, prioridad calculada y días restantes; las vencidas sin completar van primero, con la etiqueta "Vencida". "Ver todo" → Pendientes.
+    3. **Promedios:** la nota final de cada curso con los mismos colores que en Promedios (`NotaFinal`). "Ver todo" → Promedios.
+- **Celular:** una sola columna. Orden: Hoy, Próximas entregas, Calendario (vista de **un solo día**) y Promedios.
+- **Estados vacíos** con botón: "No tienes nada para hoy 🎉" → Nuevo pendiente · "No tienes entregas pendientes 🎉" → Agregar una entrega · "Agrega tu primer curso" → Promedios.
+- **Carga eficiente:** la página pide los datos una sola vez y los reparte a las tarjetas: `useTasks` (una consulta de pendientes), `useCursosConNotas` (una consulta de cursos con sus evaluaciones anidadas) y `useNombrePerfil`. Las tarjetas no consultan nada por su cuenta. (El modal del resumen del día hace su propia consulta, pero solo la primera vez de cada día.)
+- Las funciones que preparan los datos viven en `src/lib/inicio.js`; las tarjetas, en `src/components/inicio/`.
 - El calendario de Inicio usa solo datos de la app; la integración con Google Calendar es de la Fase 3.
 
 ---
@@ -118,13 +141,20 @@ Se construye cuando ya existan pendientes, checklist y promedios, porque junta d
 - `profiles`: `id` (= auth.users.id), `nombre`, `ultimo_resumen` (date), `created_at`
 - `courses`: `id`, `user_id`, `nombre`, `color`, `created_at`
 - `tasks`: `id`, `user_id`, `course_id` (nullable), `titulo`, `descripcion`, `tipo`, `prioridad_base`, `fecha_entrega` (timestamptz, nullable), `fecha_actividad` (date, nullable), `hora_inicio` y `hora_fin` (time, nullable; solo actividades), `estado`, `justificacion`, `completed_at`, `google_event_id` (nullable), `created_at`
-- `evaluations`: `id`, `user_id`, `course_id`, `parent_id` (nullable, apunta a `evaluations`), `nombre`, `peso` (numeric), `nota` (numeric 0–20, nullable), `orden`
+- `evaluations`: `id`, `user_id`, `course_id`, `parent_id` (nullable, apunta a `evaluations`), `nombre`, `peso` (numeric, % del curso entero), `nota` (numeric 0–20, nullable), `orden`, `reparto` ('manual' | 'iguales', default 'manual'), `descartar_peores` (int ≥ 0, default 0)
 
 ---
 
 ## Fases
 
-- [ ] **Fase 1:** proyecto base, login/registro, tareas, checklist, resumen del día, promedios, PWA básica, despliegue en Vercel
+- [ ] **Fase 1** (casi lista):
+  - [x] Proyecto base, login/registro
+  - [x] Pendientes (entregas y actividades)
+  - [x] Checklist "Hoy" y resumen del día
+  - [x] Promedios por curso
+  - [x] Calendario de la app (pendientes) y página de Inicio
+  - [ ] PWA básica
+  - [ ] Despliegue en Vercel (confirmar)
 - [ ] **Fase 2:** recordatorios
 - [ ] **Fase 3:** Google Calendar y Google Drive
 - [ ] **Fase 4:** IA (preguntas y lectura de sílabos)

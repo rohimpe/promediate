@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* Animaciones del modal "Nuevo pendiente": hoja que sube (celular) y ventana que aparece (computadora) */
+@keyframes subir-hoja {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes aparecer-ventana {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
 /* Colores base; el modo oscuro sigue la preferencia del sistema operativo */
 body {
   @apply bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100;
