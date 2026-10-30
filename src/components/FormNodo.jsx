@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { formatearNumero } from '../lib/arbol'
 import CampoTexto from './CampoTexto'
 
 // Formulario pequeño para crear o editar un nodo del árbol (nombre y peso).
@@ -6,8 +7,20 @@ import CampoTexto from './CampoTexto'
 //   inicial:       { nombre, peso } al editar
 //   pesoSugerido:  peso que se propone al crear (lo que falta para completar el nivel)
 //   conPeso:       false si el padre reparte en partes iguales (el peso se calcula solo)
+//   padreNombre:   nombre del padre (undefined en el primer nivel)
+//   aportePadre:   aporte del padre al curso, en % (100 en el primer nivel); sirve para mostrar
+//                  en vivo cuánto del curso vale el peso que se escribe
 //   onGuardar:     recibe { nombre, peso? }; si falla, lanza un error
-export default function FormNodo({ inicial, pesoSugerido = '', conPeso = true, onGuardar, onCancelar, textoBoton }) {
+export default function FormNodo({
+  inicial,
+  pesoSugerido = '',
+  conPeso = true,
+  padreNombre,
+  aportePadre = 100,
+  onGuardar,
+  onCancelar,
+  textoBoton,
+}) {
   const uid = useId()
   const [nombre, setNombre] = useState(inicial?.nombre ?? '')
   const [peso, setPeso] = useState(String(inicial?.peso ?? pesoSugerido))
@@ -44,18 +57,26 @@ export default function FormNodo({ inicial, pesoSugerido = '', conPeso = true, o
         onChange={(e) => setNombre(e.target.value)}
       />
       {conPeso && (
-        <CampoTexto
-          id={`${uid}-peso`}
-          label="Peso (% del curso)"
-          type="number"
-          inputMode="decimal"
-          min="0"
-          max="100"
-          step="0.01"
-          required
-          value={peso}
-          onChange={(e) => setPeso(e.target.value)}
-        />
+        <div>
+          <CampoTexto
+            id={`${uid}-peso`}
+            label={padreNombre ? `Peso (% de ${padreNombre})` : 'Peso (% del curso)'}
+            type="number"
+            inputMode="decimal"
+            min="0"
+            max="100"
+            step="0.01"
+            required
+            value={peso}
+            onChange={(e) => setPeso(e.target.value)}
+          />
+          {/* En el primer nivel el equivalente es el mismo número, así que no se muestra. */}
+          {padreNombre && peso !== '' && Number.isFinite(Number(peso)) && (
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              = {formatearNumero((Number(peso) * aportePadre) / 100)}% del curso
+            </p>
+          )}
+        </div>
       )}
 
       {error && (

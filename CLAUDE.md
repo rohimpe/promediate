@@ -74,17 +74,18 @@ supabase/
 
 ### 5. Promedios por curso
 - Botón "Agregar curso". Cada curso tiene un **árbol de evaluaciones**: cada nodo tiene nombre y peso (%), y puede tener hijos o ser una hoja (prueba) con nota.
-- **Pesos ABSOLUTOS:** el peso de cada nodo es % del **curso entero**, no de su padre.
-  - Los nodos de primer nivel suman 100. Los hijos de un grupo suman el peso del grupo.
-  - Ej.: Examen final 30% · Evaluación continua 70% → (PCs 28% · Tareas 21% · Proyecto 21%), y PCs → PC1 14%, PC2 14%.
-  - Validación por nivel con tolerancia de 0.01: "Faltan 30% para completar los 70% de PEP" / "Sobran 5%: …" / "Faltan 10% para completar el 100% del curso".
-  - (Hasta el 22/10/2026 eran relativos; la migración `20261022000000_pesos_absolutos.sql` los convierte, grupo por grupo.)
+- **Pesos RELATIVOS AL PADRE:** el peso de cada nodo es un % de su padre (`evaluations.peso`).
+  - Los hijos de cada nodo suman 100, y los de primer nivel también.
+  - Ej.: Examen final 30% · Evaluación continua 70% → (PCs 40% · Tareas 30% · Proyecto 30%), y PCs → PC1 50%, PC2 50%.
+  - **Aporte real al curso** = peso del nodo × el de todos sus ancestros / 100^nivel (`aportesAlCurso` en `src/lib/arbol.js`). Cada nodo lo muestra en pequeño ("= 14% del curso", salvo en el primer nivel, donde es el mismo número), y el formulario de crear/editar lo muestra en vivo mientras se escribe el peso. En el ejemplo: PC1 = 50% × 40% × 70% = 14%.
+  - Validación por nivel con tolerancia de 0.01: "Suman 75%: faltan 25% para completar PEP" / "Suman 105%: sobran 5% en PEP (deben sumar 100%)" / "Suman 80%: faltan 20% para completar el curso".
+  - (Historia: eran relativos, pasaron a absolutos el 22/10/2026 con `20261022000000_pesos_absolutos.sql`, y volvieron a relativos con `20261030000000_pesos_relativos.sql`. Antes de migrar se puede revisar el estado con `supabase/diagnostico_pesos.sql`, que solo lee.)
 - **Reparto de un grupo** (`evaluations.reparto`):
   - `manual`: cada hijo tiene su peso guardado.
-  - `iguales`: los hijos se reparten el peso del grupo; su `peso` guardado se ignora (se calcula, no se guarda), así que se reequilibran solos al agregar o borrar. Botón **"+ Subdivisiones iguales"** → "Crear N subdivisiones iguales" con nombre base (Laboratorio → Laboratorio 1…6). Al volver a manual, cada hijo guarda su parte igual como peso.
+  - `iguales`: cada hijo pesa 100 / n; su `peso` guardado se ignora (se calcula, no se guarda), así que se reequilibran solos al agregar o borrar. Botón **"+ Subdivisiones iguales"** → "Crear N subdivisiones iguales" con nombre base (Laboratorio → Laboratorio 1…6). Al volver a manual, cada hijo guarda su parte igual (100 / n) como peso.
 - **Descartar las N peores** (`evaluations.descartar_peores`, solo en modo iguales):
   - N va de 0 a (hijos − 1); se ajusta solo si cambia la cantidad de hijos. No hay un número fijo de pruebas: son las subdivisiones que el usuario creó.
-  - Con n hijos y N descartes cuentan las n − N mejores, y cada una vale (peso del grupo) / (n − N).
+  - Con n hijos y N descartes cuentan las n − N mejores, y cada una pesa 100 / (n − N).
   - Las pruebas sin nota cuentan como 0 al calcular la nota final, así que se descartan primero: si hay menos de n − N notas ingresadas, cuentan todas. (Descartar siempre N entre las ingresadas haría que la nota *baje* al ingresar una nota nueva.)
   - Las descartadas se ven tachadas con la etiqueta "descartada".
 - Se pueden agregar, editar, anidar y borrar nodos.
@@ -93,7 +94,13 @@ supabase/
   - **Máximo posible:** la nota final si todo lo que falta sale 20.
   - **"Te faltan X puntos para aprobar"** (o **"Aprobado ✓"** si la nota final ya es ≥ 10.5) y una línea pequeña **"Mejor nota: N en <prueba>"**.
   - **Nota mínima:** "Necesitas sacar al menos X en lo que falta" = la menor nota que, sacada en todas las pruebas pendientes, lleva a 10.5 (solo si todos los niveles cuadran).
-- **Cómo se calcula** (`src/lib/grades.js`, nada se guarda): se evalúa el curso suponiendo que cada prueba sin nota saca *x*. Con x = 0 sale la nota final; con x = 20, el máximo; la nota mínima es el menor x que llega a 10.5 (búsqueda por bisección). Así el descarte funciona igual en los tres casos. El promedio de cada rama (puntos / peso evaluado que cuenta) se muestra en su encabezado.
+- **Cómo se calcula** (`src/lib/grades.js`, nada se guarda): la nota de un nodo con hijos es la suma de (nota del hijo × peso del hijo / 100), de abajo hacia arriba; el primer nivel hace de hijos del curso. Se evalúa el curso suponiendo que cada prueba sin nota saca *x*. Con x = 0 sale la nota final; con x = 20, el máximo; la nota mínima es el menor x que llega a 10.5 (búsqueda por bisección). Así el descarte funciona igual en los tres casos. El promedio de cada rama (su nota / fracción evaluada que cuenta) se muestra en su encabezado.
+- **Ejemplos de prueba** (curso: Final 30 · Continua 70 → PCs 40 [PC1 50, PC2 50] · Tareas 30 · Proyecto 30):
+  - PC1 = 16, PC2 = 12, Tareas = 14, el resto sin nota → aportes: PCs 28%, Tareas 21%, Proyecto 21%, PC1 14%. Promedio de PCs **14**; nota final **6.86**; máximo **17.06**; nota mínima **7.14**; mejor nota 16 en PC1; color neutro.
+  - Laboratorios 40% en partes iguales con 4 labs y descarte 1, Examen 60%. Labs 10, 14 y 18 y el cuarto sin nota → cada lab pesa 33.33% (= 13.33% del curso); nota final **5.60**; máximo **18.93**; nota mínima **8.17**; ninguno aparece como "descartada" (el sin nota se descarta primero). Si el cuarto lab saca 12, se descarta el 10 (tachado) y la nota final pasa a **5.87**.
+  - Validación: primer nivel 30 + 50 → "Suman 80%: faltan 20% para completar el curso"; PEP con 40 + 35 → "Suman 75%: faltan 25% para completar PEP"; con 60 + 45 → "Suman 105%: sobran 5% en PEP (deben sumar 100%)"; 33.33 + 33.33 + 33.34 → sin aviso.
+  - Formulario en vivo: dentro de PCs (que aporta 28%), escribir peso 50 → "= 14% del curso"; 33.33 → "= 9.33% del curso".
+  - Final 50 con nota 18 y Parcial 50 sin nota → nota final **9**, nota mínima **3**; Final 8 y Parcial 8 → desaprobado (rojo), nada pendiente.
 - **Colores de la nota final** (los mismos en la página del curso, la lista de cursos y el Inicio, con `NotaFinal` y `estadoNota`):
   - **Verde:** nota final ≥ 10.5 (comparada con 2 decimales, como se ve en pantalla).
   - **Rojo:** solo si el máximo posible es < 10.5 (ni sacando 20 en lo que falta se aprueba) y todos los niveles cuadran.

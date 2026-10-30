@@ -1,11 +1,13 @@
-import { arbolCompleto, descartesEfectivos, esIguales, pesosEfectivos } from './arbol'
+import { aportesAlCurso, arbolCompleto, descartesEfectivos, esIguales, pesosRelativos } from './arbol'
 
 // ---------------------------------------------------------------------
 // Cálculo de notas (escala vigesimal, 0 a 20). Nada de esto se guarda:
 // se recalcula cada vez que se muestra.
 //
-// PESOS ABSOLUTOS: cada nodo vale un % del curso entero (ver lib/arbol.js).
-// Una prueba con nota N y peso efectivo W% aporta  W/100 × N  puntos a la nota final.
+// PESOS RELATIVOS AL PADRE (ver lib/arbol.js): los hijos de cada nodo suman 100.
+// La nota de un nodo con hijos es  Σ (nota del hijo × peso del hijo / 100).
+// Así los pesos se "multiplican hacia abajo": una prueba que pesa 50% de un grupo que pesa
+// 40% de otro que pesa 70% del curso aporta  nota × 0.5 × 0.4 × 0.7  a la nota final.
 //
 // IDEA CENTRAL: "evaluar el curso suponiendo que cada prueba sin nota saca x".
 //   x = 0  -> nota final (lo no evaluado cuenta como 0) = puntos acumulados
@@ -15,8 +17,8 @@ import { arbolCompleto, descartesEfectivos, esIguales, pesosEfectivos } from './
 //
 // Grupos:
 //   manual:  suma lo que aporta cada hijo con su propio peso.
-//   iguales: n hijos y N descartes -> cuentan las n - N mejores y cada una vale
-//            (peso del grupo) / (n - N). Las pruebas sin nota valen x, así que con
+//   iguales: n hijos y N descartes -> cuentan las n - N mejores y cada una pesa
+//            100 / (n - N). Las pruebas sin nota valen x, así que con
 //            x = 0 son las primeras en descartarse: si hay menos de n - N notas
 //            ingresadas, cuentan todas.
 // ---------------------------------------------------------------------
@@ -26,28 +28,26 @@ export const NOTA_MAXIMA = 20
 
 const EPS = 1e-9
 
-// Evalúa un nodo con peso efectivo W (fracción del curso, 0 a 1) suponiendo que las
-// pruebas sin nota sacan x. Devuelve:
-//   puntos:   lo que aporta a la nota final (sobre 20)
-//   evaluado: fracción del curso con nota que está contando
+// Evalúa un nodo suponiendo que las pruebas sin nota sacan x. Devuelve:
+//   valor:    la nota del nodo (0 a 20): la de la prueba, o Σ nota del hijo × peso del hijo / 100
+//   evaluado: fracción del nodo (0 a 1) que tiene nota y cuenta
 //   conNota:  si tiene al menos una nota ingresada
 // Si se pasa "detalle" (un Map), anota ahí el resultado de cada nodo.
 function evaluarNodo(nodo, pesos, x, detalle) {
-  const W = pesos.get(nodo.id) / 100
   let r
 
   if (nodo.hijos.length === 0) {
     r = nodo.nota == null
-      ? { puntos: W * x, evaluado: 0, conNota: false }
-      : { puntos: W * Number(nodo.nota), evaluado: W, conNota: true }
+      ? { valor: x, evaluado: 0, conNota: false }
+      : { valor: Number(nodo.nota), evaluado: 1, conNota: true }
   } else {
     const hijos = nodo.hijos.map((h) => ({ nodo: h, r: evaluarNodo(h, pesos, x, detalle) }))
     let cuentan = hijos
 
     if (esIguales(nodo)) {
       const N = descartesEfectivos(nodo)
-      // De peor a mejor. En empate se descarta antes la que no tiene nota.
-      const ordenados = [...hijos].sort((a, b) => a.r.puntos - b.r.puntos || a.r.conNota - b.r.conNota)
+      // De peor a mejor (todos pesan igual). En empate se descarta antes la que no tiene nota.
+      const ordenados = [...hijos].sort((a, b) => a.r.valor - b.r.valor || a.r.conNota - b.r.conNota)
       const descartados = new Set(ordenados.slice(0, N).map((h) => h.nodo.id))
       cuentan = hijos.filter((h) => !descartados.has(h.nodo.id))
       // Solo se marca "descartada" una prueba que ya tiene nota.
@@ -59,27 +59,36 @@ function evaluarNodo(nodo, pesos, x, detalle) {
     }
 
     r = {
-      puntos: cuentan.reduce((s, h) => s + h.r.puntos, 0),
-      evaluado: cuentan.reduce((s, h) => s + h.r.evaluado, 0),
+      ...ponderar(cuentan, pesos),
       conNota: hijos.some((h) => h.r.conNota),
     }
   }
 
   if (detalle) {
     // Promedio del nodo (sobre 20) con lo que ya tiene nota y cuenta; solo tiene sentido con x = 0.
-    detalle.set(nodo.id, { ...r, promedio: r.evaluado > EPS ? r.puntos / r.evaluado : null, descartada: false })
+    detalle.set(nodo.id, { ...r, promedio: r.evaluado > EPS ? r.valor / r.evaluado : null, descartada: false })
   }
   return r
 }
 
-// Nota final del curso si todas las pruebas sin nota sacan x.
-function evaluarCurso(arbol, pesos, x, detalle) {
-  return arbol.reduce(
-    (total, n) => {
-      const r = evaluarNodo(n, pesos, x, detalle)
-      return { puntos: total.puntos + r.puntos, evaluado: total.evaluado + r.evaluado }
+// Combina hijos: valor = Σ valor × peso / 100 ; evaluado = Σ evaluado × peso / 100.
+// "hijos" es una lista de { nodo, r }.
+function ponderar(hijos, pesos) {
+  return hijos.reduce(
+    (total, { nodo, r }) => {
+      const w = pesos.get(nodo.id) / 100
+      return { valor: total.valor + r.valor * w, evaluado: total.evaluado + r.evaluado * w }
     },
-    { puntos: 0, evaluado: 0 },
+    { valor: 0, evaluado: 0 },
+  )
+}
+
+// Nota final del curso si todas las pruebas sin nota sacan x: { valor, evaluado }.
+// El primer nivel se trata como los hijos de un nodo "curso" (también suman 100).
+function evaluarCurso(arbol, pesos, x, detalle) {
+  return ponderar(
+    arbol.map((n) => ({ nodo: n, r: evaluarNodo(n, pesos, x, detalle) })),
+    pesos,
   )
 }
 
@@ -93,9 +102,9 @@ function hayPruebasSinNota(nodos) {
 //   'asegurado'     → ya llegas al objetivo aunque saques 0 en lo que falta
 //   'imposible'     → ni con 20 en todo lo que falta llegas
 //   'sin-pendiente' → ya no queda nada por evaluar
-export function notaMinimaNecesaria(arbol, pesos = pesosEfectivos(arbol), objetivo = NOTA_APROBATORIA) {
+export function notaMinimaNecesaria(arbol, pesos = pesosRelativos(arbol), objetivo = NOTA_APROBATORIA) {
   if (!hayPruebasSinNota(arbol)) return { tipo: 'sin-pendiente' }
-  const nota = (x) => evaluarCurso(arbol, pesos, x).puntos
+  const nota = (x) => evaluarCurso(arbol, pesos, x).valor
   if (nota(0) >= objetivo - EPS) return { tipo: 'asegurado' }
   if (nota(NOTA_MAXIMA) < objetivo - EPS) return { tipo: 'imposible' }
 
@@ -134,26 +143,28 @@ export function mejorNota(nodos) {
 //   mejor:        { nota, nombre } de la mejor prueba, o null
 //   pesosCompletos: false si algún nivel no cuadra (los resultados serían aproximados)
 //   notaMinima:   ver notaMinimaNecesaria (null si los pesos no cuadran: no se puede saber)
-//   pesos:        Map id -> peso efectivo (% del curso) de cada nodo
-//   porNodo:      Map id -> { puntos, evaluado, promedio, descartada } de cada nodo
+//   pesos:        Map id -> peso relativo (% de su padre) de cada nodo
+//   aportes:      Map id -> aporte real de cada nodo (% del curso entero)
+//   porNodo:      Map id -> { valor, evaluado, promedio, descartada } de cada nodo
 export function calcularCurso(arbol) {
-  const pesos = pesosEfectivos(arbol)
+  const pesos = pesosRelativos(arbol)
   const porNodo = new Map()
-  const { puntos, evaluado } = evaluarCurso(arbol, pesos, 0, porNodo)
-  const maximo = evaluarCurso(arbol, pesos, NOTA_MAXIMA).puntos
-  const pesosCompletos = arbolCompleto(arbol, pesos)
-  const estado = estadoNota({ notaFinal: puntos, maximo, pesosCompletos })
+  const { valor: notaFinal, evaluado } = evaluarCurso(arbol, pesos, 0, porNodo)
+  const maximo = evaluarCurso(arbol, pesos, NOTA_MAXIMA).valor
+  const pesosCompletos = arbolCompleto(arbol)
+  const estado = estadoNota({ notaFinal, maximo, pesosCompletos })
 
   return {
-    notaFinal: puntos,
+    notaFinal,
     maximo,
     evaluado,
     estado,
-    puntosFaltantes: estado === 'aprobado' ? 0 : Math.ceil((NOTA_APROBATORIA - puntos) * 100 - 1e-6) / 100,
+    puntosFaltantes: estado === 'aprobado' ? 0 : Math.ceil((NOTA_APROBATORIA - notaFinal) * 100 - 1e-6) / 100,
     mejor: mejorNota(arbol),
     pesosCompletos,
     notaMinima: pesosCompletos ? notaMinimaNecesaria(arbol, pesos) : null,
     pesos,
+    aportes: aportesAlCurso(arbol, pesos),
     porNodo,
   }
 }

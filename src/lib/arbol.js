@@ -1,11 +1,13 @@
 // El árbol de evaluaciones se guarda "plano" en la tabla evaluations: una fila por nodo,
 // con parent_id apuntando a su padre (null = primer nivel). Aquí se arma el árbol en memoria.
 //
-// PESOS ABSOLUTOS: el peso de cada nodo es % del CURSO ENTERO (no de su padre).
-//   - Los nodos de primer nivel suman 100.
-//   - Los hijos de un grupo suman el peso del grupo (Continua 70% -> PCs 28% + Tareas 42%).
-//   - Excepción: en un grupo con reparto 'iguales', los hijos se reparten el peso del grupo
-//     en partes iguales; su columna "peso" se ignora (se calcula, no se guarda).
+// PESOS RELATIVOS AL PADRE: el peso de cada nodo es un % de su padre.
+//   - Los hijos de cada nodo suman 100, y los de primer nivel también.
+//     (Continua 70% -> PCs 40% + Tareas 30% + Proyecto 30%; PCs -> PC1 50% + PC2 50%.)
+//   - El aporte real de un nodo al curso es su peso × el de todos sus ancestros / 100^nivel.
+//     Ej.: PC1 = 50% de PCs, que es 40% de Continua, que es 70% del curso -> 14% del curso.
+//   - Excepción: en un grupo con reparto 'iguales', cada hijo pesa 100 / (n - N) (n hijos,
+//     N descartes); su columna "peso" se ignora (se calcula, no se guarda).
 
 // Margen para errores de redondeo al comparar sumas de pesos (33.33 + 33.33 + 33.34...).
 export const TOLERANCIA_PESO = 0.01
@@ -42,22 +44,37 @@ export function descartesEfectivos(nodo) {
   return Math.min(Math.max(0, guardado), nodo.hijos.length - 1)
 }
 
-// Peso efectivo (% del curso) de cada nodo: Map id -> número.
+// Peso relativo (% de su padre) de cada nodo: Map id -> número.
 //   - manual: el peso guardado
-//   - hijo de un grupo 'iguales' con n hijos y N descartes: peso del grupo / (n - N)
+//   - hijo de un grupo 'iguales' con n hijos y N descartes: 100 / (n - N)
 //     (es lo que vale cada una de las notas que cuentan)
-export function pesosEfectivos(arbol) {
+export function pesosRelativos(arbol) {
   const pesos = new Map()
   const visitar = (nodos, padre) => {
     const iguales = esIguales(padre)
     const cuentan = iguales ? nodos.length - descartesEfectivos(padre) : 0
     for (const n of nodos) {
-      pesos.set(n.id, iguales ? pesos.get(padre.id) / cuentan : Number(n.peso))
+      pesos.set(n.id, iguales ? 100 / cuentan : Number(n.peso))
       visitar(n.hijos, n)
     }
   }
   visitar(arbol, null)
   return pesos
+}
+
+// Aporte real de cada nodo al curso (% del curso entero): Map id -> número.
+// = peso relativo × aporte del padre / 100 (los de primer nivel aportan su propio peso).
+export function aportesAlCurso(arbol, pesos = pesosRelativos(arbol)) {
+  const aportes = new Map()
+  const visitar = (nodos, aportePadre) => {
+    for (const n of nodos) {
+      const aporte = (pesos.get(n.id) * aportePadre) / 100
+      aportes.set(n.id, aporte)
+      visitar(n.hijos, aporte)
+    }
+  }
+  visitar(arbol, 100)
+  return aportes
 }
 
 // Suma de los pesos guardados de un nivel (redondeada a 2 decimales para evitar 99.99999999).
@@ -66,21 +83,19 @@ export function sumaPesos(nodos) {
   return Math.round(suma * 100) / 100
 }
 
-// Revisa un nivel (los hijos de "padre", o el primer nivel si padre es null).
-// Devuelve null si está bien (o si no aplica), o { suma, objetivo, diferencia }:
+// Revisa un nivel (los hijos de "padre", o el primer nivel si padre es null): deben sumar 100.
+// Devuelve null si está bien (o si no aplica), o { suma, diferencia }:
 //   diferencia > 0 -> faltan ; diferencia < 0 -> sobran
-export function revisarNivel(nodos, padre, pesos) {
+export function revisarNivel(nodos, padre) {
   if (nodos.length === 0 || esIguales(padre)) return null // en 'iguales' se calculan solos
-  const objetivo = padre ? pesos.get(padre.id) : 100
   const suma = sumaPesos(nodos)
-  const diferencia = objetivo - suma
-  return Math.abs(diferencia) < TOLERANCIA_PESO ? null : { suma, objetivo, diferencia }
+  const diferencia = 100 - suma
+  return Math.abs(diferencia) < TOLERANCIA_PESO ? null : { suma, diferencia }
 }
 
-// ¿Todos los niveles del árbol tienen pesos correctos?
-export function arbolCompleto(arbol, pesos = pesosEfectivos(arbol)) {
-  const revisar = (nodos, padre) =>
-    revisarNivel(nodos, padre, pesos) === null && nodos.every((n) => revisar(n.hijos, n))
+// ¿Todos los niveles del árbol suman 100?
+export function arbolCompleto(arbol) {
+  const revisar = (nodos, padre) => revisarNivel(nodos, padre) === null && nodos.every((n) => revisar(n.hijos, n))
   return revisar(arbol, null)
 }
 

@@ -9,21 +9,15 @@ import NotaEditable from './NotaEditable'
 const BOTON =
   'rounded-lg border border-gray-300 px-2.5 py-1 text-sm font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800'
 
-// Aviso cuando los pesos de un nivel no cuadran (pesos absolutos: % del curso).
-//   primer nivel: deben sumar 100% ; subdivisiones: deben sumar el peso del grupo
+// Aviso cuando los pesos de un nivel no cuadran (pesos relativos: cada nivel debe sumar 100%).
 function AvisoPesos({ problema, padre }) {
-  const { suma, objetivo, diferencia } = problema
+  const { suma, diferencia } = problema
   const d = formatearNumero(Math.abs(diferencia))
-  let texto
-  if (!padre) {
-    texto = diferencia > 0
-      ? `Faltan ${d}% para completar el 100% del curso.`
-      : `Sobran ${d}%: el primer nivel suma ${formatearNumero(suma)}% y debe sumar 100%.`
-  } else {
-    texto = diferencia > 0
-      ? `Faltan ${d}% para completar los ${formatearNumero(objetivo)}% de ${padre.nombre}.`
-      : `Sobran ${d}%: las subdivisiones suman ${formatearNumero(suma)}% y ${padre.nombre} vale ${formatearNumero(objetivo)}%.`
-  }
+  const donde = padre ? padre.nombre : 'el curso'
+  const texto =
+    diferencia > 0
+      ? `Suman ${formatearNumero(suma)}%: faltan ${d}% para completar ${donde}.`
+      : `Suman ${formatearNumero(suma)}%: sobran ${d}% en ${donde} (deben sumar 100%).`
   return (
     <p
       role="status"
@@ -54,7 +48,7 @@ function Flecha({ abierta }) {
 //   ramas:     de useRamasAbiertas(): qué ramas están abiertas
 //   acciones:  onAgregar, onAgregarIguales, onEditar, onBorrar, onCambiarReparto, onCambiarDescarte
 export default function NivelEvaluaciones({ nodos, padre = null, resultado, ...resto }) {
-  const problema = revisarNivel(nodos, padre, resultado.pesos)
+  const problema = revisarNivel(nodos, padre)
   return (
     <div className="space-y-2">
       {problema && <AvisoPesos problema={problema} padre={padre} />}
@@ -72,7 +66,9 @@ function Nodo({ nodo, padre, resultado, ramas, ...acciones }) {
   const [modo, setModo] = useState(null) // null | 'editar' | 'hijo' | 'iguales'
   const esHoja = nodo.hijos.length === 0
   const abierta = ramas.estaAbierta(nodo.id)
-  const peso = resultado.pesos.get(nodo.id)
+  const peso = resultado.pesos.get(nodo.id) // % de su padre
+  const aporte = resultado.aportes.get(nodo.id) // % del curso entero
+  const aportePadre = padre ? resultado.aportes.get(padre.id) : 100
   const detalle = resultado.porNodo.get(nodo.id)
   const descartada = detalle?.descartada
   const pesoCalculado = esIguales(padre) // su peso lo pone el grupo, no el usuario
@@ -103,16 +99,23 @@ function Nodo({ nodo, padre, resultado, ramas, ...acciones }) {
     setModo(nuevoModo)
   }
 
+  // Peso relativo (grande) y, en pequeño, lo que aporta al curso entero. En el primer nivel
+  // los dos son iguales, así que no se repite.
   const pesoBadge = (
-    <span
-      title={pesoCalculado ? 'Parte igual del peso del grupo (se calcula solo)' : 'Peso en el curso'}
-      className={`shrink-0 rounded-full px-2.5 py-0.5 text-sm font-semibold ${
-        pesoCalculado
-          ? 'border border-dashed border-indigo-300 text-indigo-800 dark:border-indigo-800 dark:text-indigo-300'
-          : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
-      } ${descartada ? 'line-through opacity-60' : ''}`}
-    >
-      {formatearNumero(peso)}%
+    <span className={`flex shrink-0 flex-col items-end gap-0.5 ${descartada ? 'line-through opacity-60' : ''}`}>
+      <span
+        title={pesoCalculado ? 'Parte igual del grupo (se calcula sola)' : padre ? `Peso dentro de ${padre.nombre}` : 'Peso en el curso'}
+        className={`rounded-full px-2.5 py-0.5 text-sm font-semibold ${
+          pesoCalculado
+            ? 'border border-dashed border-indigo-300 text-indigo-800 dark:border-indigo-800 dark:text-indigo-300'
+            : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+        }`}
+      >
+        {formatearNumero(peso)}%
+      </span>
+      {padre && (
+        <span className="text-xs text-gray-600 dark:text-gray-400">= {formatearNumero(aporte)}% del curso</span>
+      )}
     </span>
   )
 
@@ -142,6 +145,8 @@ function Nodo({ nodo, padre, resultado, ramas, ...acciones }) {
           <FormNodo
             inicial={nodo}
             conPeso={!pesoCalculado}
+            padreNombre={padre?.nombre}
+            aportePadre={aportePadre}
             textoBoton="Guardar cambios"
             onCancelar={() => setModo(null)}
             onGuardar={async (campos) => {
@@ -212,7 +217,9 @@ function Nodo({ nodo, padre, resultado, ramas, ...acciones }) {
           <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-800">
             <FormNodo
               conPeso={!esIguales(nodo)}
-              pesoSugerido={formatearNumero(Math.max(0, peso - sumaPesos(nodo.hijos)))}
+              padreNombre={nodo.nombre}
+              aportePadre={aporte}
+              pesoSugerido={formatearNumero(Math.max(0, 100 - sumaPesos(nodo.hijos)))}
               textoBoton="Agregar"
               onCancelar={() => setModo(null)}
               onGuardar={async (campos) => {

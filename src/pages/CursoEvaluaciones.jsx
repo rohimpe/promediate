@@ -76,11 +76,11 @@ export default function CursoEvaluaciones() {
   }
 
   // Cambiar entre 'manual' y 'iguales'. Al volver a manual, cada hijo se queda con su
-  // parte igual como peso guardado, para no empezar con todos en 0%.
+  // parte igual (100 / cantidad de hijos) como peso guardado, para no empezar con todos en 0%.
   async function onCambiarReparto(nodo, reparto) {
     const cambios = [{ id: nodo.id, campos: { reparto } }]
     if (reparto === 'manual' && nodo.hijos.length > 0) {
-      const parte = Math.round((resultado.pesos.get(nodo.id) / nodo.hijos.length) * 10000) / 10000
+      const parte = Math.round((100 / nodo.hijos.length) * 10000) / 10000
       for (const h of nodo.hijos) cambios.push({ id: h.id, campos: { peso: parte } })
     }
     await editarVarios(cambios)
