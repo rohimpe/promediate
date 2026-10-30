@@ -1,3 +1,4 @@
+import { registrarError } from './errores'
 import { supabase } from './supabaseClient'
 
 // Fecha ('YYYY-MM-DD') en que el usuario vio por última vez el resumen del día,
@@ -9,7 +10,7 @@ export async function obtenerUltimoResumen(userId) {
     .select('ultimo_resumen')
     .eq('id', userId)
     .maybeSingle()
-  if (error) throw error
+  if (error) throw registrarError(error)
   return data?.ultimo_resumen ?? null
 }
 
@@ -18,7 +19,7 @@ export async function guardarUltimoResumen(userId, fecha) {
   const { error } = await supabase
     .from('profiles')
     .upsert({ id: userId, ultimo_resumen: fecha })
-  if (error) throw error
+  if (error) throw registrarError(error)
 }
 
 // Nombre del perfil, o null si no tiene (o no hay fila de perfil).
@@ -28,6 +29,6 @@ export async function obtenerNombrePerfil(userId) {
     .select('nombre')
     .eq('id', userId)
     .maybeSingle()
-  if (error) throw error
+  if (error) throw registrarError(error)
   return data?.nombre?.trim() || null
 }

@@ -1,3 +1,4 @@
+import { registrarError } from './errores'
 import { supabase } from './supabaseClient'
 
 // Todas las consultas pasan por RLS: Supabase solo devuelve / modifica las
@@ -8,13 +9,13 @@ export async function listarTareas() {
   const { data, error } = await supabase
     .from('tasks')
     .select('*, courses(nombre, color)')
-  if (error) throw error
+  if (error) throw registrarError(error)
   return data
 }
 
 export async function obtenerTarea(id) {
   const { data, error } = await supabase.from('tasks').select('*').eq('id', id).maybeSingle()
-  if (error) throw error
+  if (error) throw registrarError(error)
   return data // null si no existe o no es del usuario
 }
 
@@ -25,18 +26,18 @@ export async function crearTarea(campos) {
     .insert(campos)
     .select('*, courses(nombre, color)')
     .single()
-  if (error) throw error
+  if (error) throw registrarError(error)
   return data
 }
 
 export async function actualizarTarea(id, campos) {
   const { error } = await supabase.from('tasks').update(campos).eq('id', id)
-  if (error) throw error
+  if (error) throw registrarError(error)
 }
 
 export async function borrarTarea(id) {
   const { error } = await supabase.from('tasks').delete().eq('id', id)
-  if (error) throw error
+  if (error) throw registrarError(error)
 }
 
 export async function listarCursos() {
@@ -44,6 +45,6 @@ export async function listarCursos() {
     .from('courses')
     .select('id, nombre, color')
     .order('nombre')
-  if (error) throw error
+  if (error) throw registrarError(error)
   return data
 }

@@ -35,7 +35,8 @@ src/
   hooks/          # useAuth, useTasks, useCursosConNotas, useEvaluaciones, ...
 supabase/
   migrations/
-  diagnostico_pesos.sql   # solo lee; revisa los pesos antes de migrar
+  diagnostico_pesos.sql          # solo lee; revisa los pesos antes de migrar
+  verificar_es_nodo_propio.sql   # solo lee; compara la base real con la migración de RLS
   functions/              # (Fase 2 en adelante) Edge Functions
 ```
 
@@ -109,9 +110,11 @@ Supabase Auth con correo y contraseña. Sin sesión, todo redirige a Login (`Pro
 Carpetas (una por curso). Los adjuntos se suben al Google Drive del usuario con el permiso `drive.file`.
 
 ### 9. Recordatorios (Fase 2)
-Solo el día de entrega: cada 4 horas y, durante la última hora, cada 15 minutos.
-- **Canal recomendado: Telegram.** Bot creado con @BotFather; el token solo como secret de Supabase; el usuario se vincula escribiendo `/start` al bot; `pg_cron` cada 15 minutos llama a una Edge Function que revisa qué toca enviar.
-- **Por definir:** a qué hora empiezan los avisos de cada 4 horas, horas de silencio, si aplica también a actividades y si se detienen al completar o justificar.
+Se separan en dos piezas independientes, para poder cambiar el canal sin tocar las reglas:
+
+- **Cuándo avisar (lógica):** solo el día de entrega, cada 4 horas y, durante la última hora, cada 15 minutos. `pg_cron` corre cada 15 minutos y llama a una Edge Function que decide qué pendientes toca avisar, a quién y qué mensaje enviar. Esta parte no sabe nada del canal.
+- **Por dónde avisar (canal):** **por definir** (opciones: push de la PWA, correo o Telegram). Es un módulo aparte que solo recibe "usuario + mensaje" y lo envía. Cada canal pide su propio ajuste (push: suscripción del dispositivo; correo: proveedor de envío; Telegram: bot de @BotFather, token solo como secret de Supabase y vinculación del usuario con `/start`). Las claves del canal, solo como secrets de la Edge Function.
+- **Por definir (reglas):** a qué hora empiezan los avisos de cada 4 horas, horas de silencio, si aplica también a actividades y si se detienen al completar o justificar.
 
 ### 10. IA (Fase 4)
 El usuario elige su proveedor y guarda su propia API key (cifrada, usada solo desde Edge Functions). Preguntas como "¿qué tengo el jueves?" usando sus pendientes como contexto.
@@ -131,10 +134,10 @@ Las 4 tablas tienen RLS activo con políticas por usuario (`user_id = auth.uid()
 
 ## Reglas aprendidas
 
-- **Una política RLS nunca debe consultar su propia tabla directamente:** causó `infinite recursion` (error 42P17). Si hace falta, usa una función `security definer` como `es_nodo_propio`, con `set search_path = public` y permisos de ejecución solo para `authenticated`. ⚠️ **Pendiente:** `es_nodo_propio` y las políticas corregidas de `evaluations` están en Supabase pero **no** en `supabase/migrations/`; las políticas de la migración inicial todavía consultan `evaluations` dentro de sí mismas. Hay que guardarlas como migración.
+- **Una política RLS nunca debe consultar su propia tabla directamente:** causó `infinite recursion` (error 42P17). Si hace falta, usa una función `security definer` como `es_nodo_propio`, con `set search_path = public` y permisos de ejecución solo para `authenticated`. Ya aplicado en `evaluations` (`20261030100000_evaluations_es_nodo_propio.sql`); `supabase/verificar_es_nodo_propio.sql` comprueba que la base real coincida.
 - **Todo cambio en la base de datos se guarda como migración** en `supabase/migrations/` y se ejecuta en el SQL Editor de Supabase **antes** de publicar el código que lo usa.
 - **Revisión de seguridad:** las 4 tablas tienen RLS activo y políticas; el frontend solo usa las dos variables `VITE_*`; en Vercel solo existen esas dos variables.
-- **Errores de Supabase:** deben mostrarse completos en consola (`message`, `details`, `hint`). ⚠️ **Pendiente:** hoy el código no hace ningún `console.error`; las APIs hacen `throw error` y los hooks muestran un mensaje genérico, así que el detalle se pierde.
+- **Errores de Supabase:** se muestran completos en consola (`message`, `details`, `hint`, `code`) con `registrarError` (`src/lib/errores.js`) antes del `throw`: `if (error) throw registrarError(error)`. Al usuario se le muestran mensajes genéricos. Usa lo mismo en toda API nueva.
 
 ## Despliegue
 
@@ -148,7 +151,7 @@ Las 4 tablas tienen RLS activo con políticas por usuario (`user_id = auth.uid()
 ## Fases
 
 - [x] **Fase 1** — terminada: publicada en Vercel, instalable como PWA y probada en celular (login/registro, pendientes, Hoy y resumen del día, promedios, calendario e Inicio).
-- [ ] **Fase 2:** recordatorios (Telegram; ver sección 9)
+- [ ] **Fase 2:** recordatorios (canal por definir; ver sección 9)
 - [ ] **Fase 3:** Google Calendar y Google Drive
 - [ ] **Fase 4:** IA (preguntas y lectura de sílabos)
 
