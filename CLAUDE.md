@@ -30,14 +30,17 @@ Habla conmigo **en español** y explícame brevemente lo que haces: estoy aprend
 src/
   components/     # piezas reutilizables; calendario/ e inicio/ tienen las suyas
   pages/          # Inicio, Hoy, Calendario, Promedios, CursoEvaluaciones, Tareas (Pendientes),
-                  # NuevaTarea (Nuevo pendiente), EditarTarea, Login, Registro
-  lib/            # supabaseClient, fechas, tipos, priority, checklist, calendario, inicio, arbol, grades, APIs
+                  # NuevaTarea (Nuevo pendiente), EditarTarea, Conexiones, Login, Registro
+  lib/            # supabaseClient, fechas, tipos, priority, checklist, calendario, inicio, arbol, grades, APIs (googleApi: conexión con Google)
   hooks/          # useAuth, useTasks, useCursosConNotas, useEvaluaciones, ...
 supabase/
   migrations/
   diagnostico_pesos.sql          # solo lee; revisa los pesos antes de migrar
   verificar_es_nodo_propio.sql   # solo lee; compara la base real con la migración de RLS
-  functions/              # (Fase 2 en adelante) Edge Functions
+  verificar_google_rls.sql       # solo lee; comprueba RLS activo y cero políticas en las tablas de Google
+  config.toml             # mínimo: solo deja google-callback sin verificación de JWT
+  functions/              # Edge Functions (Deno): google-connect, google-callback, google-disconnect
+    _shared/              # cors, supabaseAdmin, cifrado (AES-GCM), google (tokens y constantes)
 ```
 
 ---
@@ -106,29 +109,42 @@ Supabase Auth con correo y contraseña. Sin sesión, todo redirige a Login (`Pro
 - **Estados vacíos** con botón: "No tienes nada para hoy 🎉" → Nuevo pendiente · "No tienes entregas pendientes 🎉" → Agregar una entrega · "Agrega tu primer curso" → Promedios.
 - **Carga eficiente:** la página pide los datos una sola vez (`useTasks`, `useCursosConNotas`, `useNombrePerfil`) y las tarjetas no consultan por su cuenta. Las funciones que preparan los datos están en `src/lib/inicio.js`; las tarjetas, en `src/components/inicio/`.
 
-### 8. Archivos (Fase 3)
+### 8. Conexión con Google (Fase 3, parte A) — hecha, pendiente de confirmar en local
+Página **Conexiones** (`/conexiones`, en el menú) con una tarjeta de Google: *No conectado* → "Conectar Google"; *Conectado* (con el correo de Google) → "Desconectar" (con confirmación); estado `reconectar` → "Reconectar Google". Al volver de Google lee `?google=ok|error`, muestra el mensaje y limpia la URL. Aún **no** lee ni crea eventos de Calendar ni toca Drive.
+
+- **Flujo:** `google-connect` (con JWT del usuario) crea un `state` aleatorio ligado al `user_id` y devuelve la URL de Google → el navegador va a Google → Google vuelve a `google-callback` (sin JWT) → se valida el `state`, se cambia el `code` por tokens, se cifra el refresh token y se guarda → redirige a `APP_URL/conexiones?google=ok|error`.
+- **Scopes:** `calendar.events`, `drive.file`, `openid`, `email`, con `access_type=offline` y `prompt=consent`.
+- **Por qué `google-callback` no lleva JWT:** la abre el navegador cuando Google redirige al usuario, y esa redirección no puede llevar el token de sesión de Supabase. La identidad sale del `state`: un código de 32 bytes aleatorios (imposible de adivinar) que solo se creó tras verificar el JWT en `google-connect`, está ligado a un `user_id`, **vence a los 10 minutos** y **se borra al usarlo** (un segundo intento con el mismo `state` falla). Sin un `state` vigente, el callback no guarda nada. Además, el `code` de Google es de un solo uso y se cambia usando el `client_secret`, que solo existe en la función.
+- **Seguridad:** `google_oauth_states` y `google_connections` tienen RLS activo y **cero políticas** (y sin permisos de tabla para `anon`/`authenticated`): el frontend no las lee; solo las Edge Functions con la service role. El frontend solo llama a `mi_conexion_google()` (sin tokens). El refresh token va cifrado con AES-GCM (IV aleatorio de 12 bytes junto al texto cifrado, clave `TOKEN_ENCRYPTION_KEY`). Los logs de las funciones solo llevan mensajes genéricos y códigos, nunca tokens, `code` ni secrets.
+- **`invalid_grant`:** `obtenerAccessToken` (`_shared/google.ts`) marca la conexión como `reconectar`; la página lo muestra. Las partes B y C usarán esa función.
+- **Secrets de Supabase:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APP_URL` (sin barra final), `TOKEN_ENCRYPTION_KEY` (32 bytes en base64). `SUPABASE_URL` y la service role las inyecta Supabase.
+- **Despliegue:** `supabase functions deploy google-connect`, `google-callback` (`verify_jwt = false` en `supabase/config.toml`) y `google-disconnect`; migración `20261108000000_google_conexiones.sql` en el SQL Editor **antes** de probar. Sin Docker: añadir `--use-api`.
+
+### 9. Archivos (Fase 3, partes C/D)
 Carpetas (una por curso). Los adjuntos se suben al Google Drive del usuario con el permiso `drive.file`.
 
-### 9. Recordatorios (Fase 2)
+### 10. Recordatorios (Fase 2)
 Se separan en dos piezas independientes, para poder cambiar el canal sin tocar las reglas:
 
 - **Cuándo avisar (lógica):** solo el día de entrega, cada 4 horas y, durante la última hora, cada 15 minutos. `pg_cron` corre cada 15 minutos y llama a una Edge Function que decide qué pendientes toca avisar, a quién y qué mensaje enviar. Esta parte no sabe nada del canal.
 - **Por dónde avisar (canal):** **por definir** (opciones: push de la PWA, correo o Telegram). Es un módulo aparte que solo recibe "usuario + mensaje" y lo envía. Cada canal pide su propio ajuste (push: suscripción del dispositivo; correo: proveedor de envío; Telegram: bot de @BotFather, token solo como secret de Supabase y vinculación del usuario con `/start`). Las claves del canal, solo como secrets de la Edge Function.
 - **Por definir (reglas):** a qué hora empiezan los avisos de cada 4 horas, horas de silencio, si aplica también a actividades y si se detienen al completar o justificar.
 
-### 10. IA (Fase 4)
+### 11. IA (Fase 4)
 El usuario elige su proveedor y guarda su propia API key (cifrada, usada solo desde Edge Functions). Preguntas como "¿qué tengo el jueves?" usando sus pendientes como contexto.
 
 ---
 
 ## Modelo de datos
 
-Las 4 tablas tienen RLS activo con políticas por usuario (`user_id = auth.uid()`; en `profiles`, `id = auth.uid()`).
+Las 4 tablas principales tienen RLS activo con políticas por usuario (`user_id = auth.uid()`; en `profiles`, `id = auth.uid()`). Las 2 tablas de Google (al final) tienen RLS activo **sin políticas** a propósito.
 
 - **`profiles`**: `id` (= auth.users.id), `nombre`, `ultimo_resumen` (date), `created_at`. Sin política de borrado (se borra con el usuario).
 - **`courses`**: `id`, `user_id`, `nombre`, `color`, `created_at`.
 - **`tasks`**: `id`, `user_id`, `course_id` (nullable; al borrar el curso queda en null), `titulo`, `descripcion`, `tipo` (`tarea` | `actividad`), `prioridad_base`, `fecha_entrega` (timestamptz, solo entregas), `fecha_actividad` (date, solo actividades), `hora_inicio` y `hora_fin` (time, nullable; hora de pared de Lima; fin > inicio), `estado` (`pendiente` | `completada` | `justificada`), `justificacion`, `completed_at`, `google_event_id` (nullable), `created_at`.
 - **`evaluations`**: `id`, `user_id`, `course_id`, `parent_id` (nullable; al borrar un nodo se borran sus hijos), `nombre`, `peso` (numeric 0–100, **% del padre**), `nota` (numeric 0–20, nullable), `orden`, `reparto` (`manual` | `iguales`, default `manual`), `descartar_peores` (int ≥ 0, default 0).
+- **`google_oauth_states`** (solo Edge Functions): `state` (PK, aleatorio), `user_id`, `expira_en` (10 min), `created_at`. Los vencidos se borran al crear uno nuevo.
+- **`google_connections`** (solo Edge Functions): `user_id` (PK, `on delete cascade`), `refresh_token_cifrado`, `scopes`, `email_google`, `estado` (`activa` | `reconectar`), `created_at`, `updated_at`. El frontend solo ve `mi_conexion_google()` → `conectado`, `email_google`, `estado`.
 
 ---
 
@@ -151,8 +167,12 @@ Las 4 tablas tienen RLS activo con políticas por usuario (`user_id = auth.uid()
 ## Fases
 
 - [x] **Fase 1** — terminada: publicada en Vercel, instalable como PWA y probada en celular (login/registro, pendientes, Hoy y resumen del día, promedios, calendario e Inicio).
-- [ ] **Fase 2:** recordatorios (canal por definir; ver sección 9)
+- [ ] **Fase 2:** recordatorios (canal por definir; ver sección 10)
 - [ ] **Fase 3:** Google Calendar y Google Drive
+  - [ ] **A:** conectar la cuenta de Google (sección 8; hecha, falta confirmar la prueba en local)
+  - [ ] **B:** leer y crear eventos en Google Calendar
+  - [ ] **C:** archivos en Google Drive
+  - [ ] **D:** por definir
 - [ ] **Fase 4:** IA (preguntas y lectura de sílabos)
 
 Actualiza esta lista cuando terminemos cada fase.

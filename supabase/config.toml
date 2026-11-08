@@ -1,0 +1,9 @@
+# Configuración mínima del CLI de Supabase (solo lo que usamos).
+# El resto de ajustes del proyecto se cambian en el panel de Supabase.
+project_id = "promediate"
+
+# Google redirige al usuario a esta función desde el navegador, sin sesión de Supabase,
+# así que no puede exigir JWT. La protege el "state" (ver CLAUDE.md).
+# Al desplegar, el CLI lee esto; --no-verify-jwt hace lo mismo desde la línea de comandos.
+[functions.google-callback]
+verify_jwt = false
