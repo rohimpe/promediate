@@ -32,14 +32,14 @@ src/
   pages/          # Inicio, Hoy, Calendario, Promedios, CursoEvaluaciones, Tareas (Pendientes),
                   # NuevaTarea (Nuevo pendiente), EditarTarea, Conexiones, Login, Registro
   lib/            # supabaseClient, fechas, tipos, priority, checklist, calendario, inicio, arbol, grades, APIs (googleApi: conexión con Google)
-  hooks/          # useAuth, useTasks, useCursosConNotas, useEvaluaciones, ...
+  hooks/          # useAuth, useTasks, useCursosConNotas, useEvaluaciones, useGoogleEventos, ...
 supabase/
   migrations/
   diagnostico_pesos.sql          # solo lee; revisa los pesos antes de migrar
   verificar_es_nodo_propio.sql   # solo lee; compara la base real con la migración de RLS
   verificar_google_rls.sql       # solo lee; comprueba RLS activo y cero políticas en las tablas de Google
   config.toml             # mínimo: solo deja google-callback sin verificación de JWT
-  functions/              # Edge Functions (Deno): google-connect, google-callback, google-disconnect
+  functions/              # Edge Functions (Deno): google-connect, google-callback, google-disconnect, google-calendar-events
     _shared/              # cors, supabaseAdmin, cifrado (AES-GCM), google (tokens y constantes)
 ```
 
@@ -97,7 +97,13 @@ Supabase Auth con correo y contraseña. Sin sesión, todo redirige a Login (`Pro
 - Solo entiende **eventos normalizados** `{ id, titulo, inicio, fin, todoElDia, tipo, color, estado, origen, curso }`. `tareasAEventos` (`src/lib/calendario.js`) convierte las filas de `tasks` en eventos con `origen: 'app'`; las entregas usan el color de su curso, las actividades uno fijo, y `estado` incluye `vencida` (calculado). En la Fase 3 los eventos de Google Calendar se suman con `origen: 'google'` y `tipo: 'evento'` sin tocar el calendario.
 - **Creación rápida** (`NuevoPendienteModal` + `PendienteForm`, el mismo formulario de Nuevo/Editar pendiente): tocar un espacio vacío de un día abre el modal con esa fecha; en la cuadrícula horaria rellena inicio (al cuarto de hora más cercano) y fin (+1 h) como Actividad; el encabezado del día crea una Entrega 23:59; en el mes cada casilla tiene un "+"; el botón "+ Nuevo" usa la fecha de hoy. Al guardar, `useTasks.crear` agrega la fila sin recargar. Sin la propiedad `onCrear`, el calendario es solo de lectura.
 - Al tocar un evento se abre `PanelEvento` (completar, justificar, editar). Las completadas se ven marcadas.
-- Fase 3: leer los eventos de Google Calendar del usuario.
+- **Google Calendar (Fase 3, parte B — solo lectura, hecha, pendiente de confirmar):** `CalendarioConGoogle` (`src/components/calendario/`) envuelve a `CalendarView` y lo usan la página Calendario y el calendario del Inicio. Mezcla `tareasAEventos` con `googleAEventos` (`src/lib/calendario.js`): eventos `origen: 'google'`, `tipo: 'evento'`, color fijo `COLOR_GOOGLE`, ícono de calendario (los puntos del mes son cuadraditos) y los campos extra `lugar` y `enlace`.
+  - **Rango:** `CalendarView` informa los días visibles con `onRangoVisible` (`rangoDeVista`); `useGoogleEventos(rango, activo)` pide a `google-calendar-events` solo ese rango. Caché **en memoria** (5 min, por usuario, compartida entre Inicio y Calendario; un rango contenido en otro ya pedido no vuelve a llamar). Se vuelve a pedir con "Actualizar", al volver a la pestaña si lo guardado tiene más de 5 min, y se vacía al desconectar Google (`invalidarEventosGoogle`).
+  - **Interruptor** "Mostrar Google Calendar" (`useMostrarGoogle`, `localStorage` con try/catch). Apagado, no se llama a Google.
+  - **Todo el día:** franja superior en semana/día (la de "todo el día" que ya existía) y punto en el mes; nunca bloque en la cuadrícula. **Zona horaria:** los eventos con hora se convierten al instante real y se muestran en Lima; las fechas de todo el día se toman como días de Lima (nunca `new Date('YYYY-MM-DD')`, que es UTC). Un evento de varios días genera un evento por día.
+  - **Panel de solo lectura** (título, hora, lugar y "Abrir en Google Calendar" en pestaña nueva); sin Completar, Justificar ni Editar, y tocarlo no abre la creación de pendientes.
+  - **Avisos no bloqueantes** según el `estado` de la función: `no_conectado` → invitación a /conexiones; `reconectar` y `permisos_incompletos` → aviso con enlace; fallo de la llamada → aviso y el resto del calendario sigue igual. **Hoy y el checklist no incluyen eventos de Google** (no se pueden completar).
+  - **Edge Function `google-calendar-events`:** exige el JWT (lo verifica con `usuarioDeLaPeticion`); recibe `{ desde, hasta }` (máximo 100 días); valida `estado` y que los scopes incluyan `calendar.events`; llama a `events.list` del calendario `primary` (`singleEvents`, `orderBy=startTime`, páginas de 250, tope de 1000 eventos → `truncado`); descarta cancelados, rechazados por el usuario y los creados por la app (`extendedProperties.private.origen = 'tablero-de-vida'` o su id en `tasks.google_event_id`). Devuelve `{ estado, eventos, truncado }` sin descripciones ni asistentes y no registra tokens ni contenido de eventos.
 
 ### 7. Inicio (`/`, página principal) ✅
 - **Saludo:** "Hola, <nombre> 👋" y la fecha en español (Lima). El nombre sale de `profiles.nombre`; si no hay, la parte del correo antes de la @.
@@ -118,9 +124,9 @@ Página **Conexiones** (`/conexiones`, en el menú) con una tarjeta de Google: *
 - **Seguridad:** `google_oauth_states` y `google_connections` tienen RLS activo y **cero políticas** (y sin permisos de tabla para `anon`/`authenticated`): el frontend no las lee; solo las Edge Functions con la service role. El frontend solo llama a `mi_conexion_google()` (sin tokens). El refresh token va cifrado con AES-GCM (IV aleatorio de 12 bytes junto al texto cifrado, clave `TOKEN_ENCRYPTION_KEY`). Los logs de las funciones solo llevan mensajes genéricos y códigos, nunca tokens, `code` ni secrets.
 - **`invalid_grant`:** `obtenerAccessToken` (`_shared/google.ts`) marca la conexión como `reconectar`; la página lo muestra. Las partes B y C usarán esa función.
 - **Secrets de Supabase:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APP_URL` (sin barra final), `TOKEN_ENCRYPTION_KEY` (32 bytes en base64). `SUPABASE_URL` y la service role las inyecta Supabase.
-- **Despliegue:** `supabase functions deploy google-connect`, `google-callback` (`verify_jwt = false` en `supabase/config.toml`) y `google-disconnect`; migración `20261108000000_google_conexiones.sql` en el SQL Editor **antes** de probar. Sin Docker: añadir `--use-api`.
+- **Despliegue:** `supabase functions deploy google-connect`, `google-callback` (`verify_jwt = false` en `supabase/config.toml`), `google-disconnect` y `google-calendar-events`; migración `20261108000000_google_conexiones.sql` en el SQL Editor **antes** de probar. Sin Docker: añadir `--use-api`.
 
-### 9. Archivos (Fase 3, partes C/D)
+### 9. Archivos (Fase 3, parte D)
 Carpetas (una por curso). Los adjuntos se suben al Google Drive del usuario con el permiso `drive.file`.
 
 ### 10. Recordatorios (Fase 2)
@@ -170,9 +176,9 @@ Las 4 tablas principales tienen RLS activo con políticas por usuario (`user_id 
 - [ ] **Fase 2:** recordatorios (canal por definir; ver sección 10)
 - [ ] **Fase 3:** Google Calendar y Google Drive
   - [x] **A:** conectar la cuenta de Google (sección 8; hecha y probada)
-  - [ ] **B:** leer y crear eventos en Google Calendar
-  - [ ] **C:** archivos en Google Drive
-  - [ ] **D:** por definir
+  - [ ] **B:** leer eventos de Google Calendar (sección 6; hecha, falta confirmar la prueba en local)
+  - [ ] **C:** crear los pendientes como eventos en Google Calendar (`google_event_id`)
+  - [ ] **D:** archivos en Google Drive (sección 9)
 - [ ] **Fase 4:** IA (preguntas y lectura de sílabos)
 
 Actualiza esta lista cuando terminemos cada fase.

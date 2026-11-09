@@ -1,21 +1,9 @@
-import { useMemo, useState } from 'react'
-import CalendarView from '../components/calendario/CalendarView'
-import PanelEvento from '../components/calendario/PanelEvento'
-import NuevoPendienteModal from '../components/NuevoPendienteModal'
+import CalendarioConGoogle from '../components/calendario/CalendarioConGoogle'
 import { useTasks } from '../hooks/useTasks'
-import { tareasAEventos } from '../lib/calendario'
 
-// Página "Calendario": convierte los pendientes en eventos y se los pasa a <CalendarView>.
+// Página "Calendario": le pasa los pendientes al calendario, que además mezcla los eventos de Google.
 export default function Calendario() {
   const { tareas, cargando, error, cambiar, crear } = useTasks()
-  const [seleccionado, setSeleccionado] = useState(null) // id del evento abierto
-  const [nuevo, setNuevo] = useState(null) // valores iniciales del modal "Nuevo pendiente" (null = cerrado)
-
-  const eventos = useMemo(() => tareasAEventos(tareas), [tareas])
-
-  // Se busca por id en cada render para que el panel refleje los cambios (completar, deshacer…).
-  const evento = eventos.find((e) => e.id === seleccionado)
-  const tarea = evento?.origen === 'app' ? tareas.find((t) => t.id === evento.id) : undefined
 
   return (
     <>
@@ -28,19 +16,7 @@ export default function Calendario() {
         </p>
       )}
 
-      <CalendarView eventos={eventos} onSeleccionar={(e) => setSeleccionado(e.id)} onCrear={setNuevo} />
-
-      {evento && (
-        <PanelEvento
-          key={evento.id}
-          evento={evento}
-          tarea={tarea}
-          cambiar={cambiar}
-          onCerrar={() => setSeleccionado(null)}
-        />
-      )}
-
-      {nuevo && <NuevoPendienteModal valoresIniciales={nuevo} onGuardar={crear} onCerrar={() => setNuevo(null)} />}
+      <CalendarioConGoogle tareas={tareas} cambiar={cambiar} crear={crear} />
     </>
   )
 }

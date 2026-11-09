@@ -1,8 +1,19 @@
 import { COLOR_JUSTIFICADA } from '../../lib/calendario'
 import { horaEnLima } from '../../lib/fechas'
 
+// Calendarito que distingue a los eventos de Google de los pendientes de la app.
+export function IconoGoogle({ className = 'size-3' }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden className={`shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="3" width="12" height="11" rx="2" />
+      <path d="M2 7h12M5 1.5v3M11 1.5v3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 // Un evento dibujado como botón. Se ve distinto según tipo y estado:
 //   actividad  -> bloque con franja de color a la izquierda
+//   evento     -> como la actividad, en el color de Google y con un calendarito (solo lectura)
 //   entrega    -> marcador con borde de color (y ⚑) en su hora límite
 //   completada -> ✓ y texto tachado   · justificada -> gris con etiqueta
 //   vencida    -> borde rojo           · pendiente  -> normal
@@ -15,10 +26,10 @@ export default function BloqueEvento({ evento, detalle = false, onClick, classNa
   const hecha = estado === 'completada'
 
   const hora =
-    tipo === 'actividad' && !evento.todoElDia
-      ? `${horaEnLima(evento.inicio)}–${horaEnLima(evento.fin)}`
-      : tipo === 'entrega'
-        ? `Límite ${horaEnLima(evento.inicio)}`
+    tipo === 'entrega'
+      ? `Límite ${horaEnLima(evento.inicio)}`
+      : !evento.todoElDia
+        ? `${horaEnLima(evento.inicio)}–${horaEnLima(evento.fin)}`
         : ''
 
   const apariencia =
@@ -36,7 +47,9 @@ export default function BloqueEvento({ evento, detalle = false, onClick, classNa
     <button
       type="button"
       onClick={onClick}
-      title={`${evento.titulo}${hora ? ` · ${hora}` : ''}${evento.curso ? ` · ${evento.curso}` : ''}`}
+      title={`${evento.titulo}${hora ? ` · ${hora}` : ''}${evento.curso ? ` · ${evento.curso}` : ''}${
+        evento.lugar ? ` · ${evento.lugar}` : ''
+      }`}
       style={{ ...apariencia, ...style }}
       className={`block overflow-hidden rounded-md px-1.5 py-0.5 text-left text-xs leading-tight [--fondo-bloque:#fff] dark:[--fondo-bloque:#030712] ${
         estado === 'vencida' ? 'ring-2 ring-red-500' : ''
@@ -44,6 +57,7 @@ export default function BloqueEvento({ evento, detalle = false, onClick, classNa
     >
       <span className="flex items-center gap-1">
         {tipo === 'entrega' && !hecha && <span aria-hidden>⚑</span>}
+        {tipo === 'evento' && <IconoGoogle />}
         {hecha && (
           <span aria-hidden className="font-bold text-green-600 dark:text-green-400">
             ✓

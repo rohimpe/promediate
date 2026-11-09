@@ -1,14 +1,28 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router'
 import { camposCompletada, camposJustificada, camposPendiente } from '../../lib/checklist'
+import { fechaEnLima, formatearDiaLargo, formatearFechaHora, horaEnLima } from '../../lib/fechas'
 import AccionesChecklist from '../AccionesChecklist'
 import TarjetaTarea from '../TarjetaTarea'
+import { IconoGoogle } from './BloqueEvento'
+
+// 'Lunes 9 de noviembre · 10:00–11:30' (hora de Lima). Si cruza la medianoche, muestra ambas fechas.
+function textoHorario(evento) {
+  const dia = formatearDiaLargo(fechaEnLima(evento.inicio)).replace(/^./, (c) => c.toUpperCase())
+  if (evento.todoElDia) return `${dia} · Todo el día`
+  if (evento.fin <= evento.inicio) return `${dia} · ${horaEnLima(evento.inicio)}`
+  if (fechaEnLima(evento.fin) !== fechaEnLima(evento.inicio)) {
+    return `${formatearFechaHora(evento.inicio)} → ${formatearFechaHora(evento.fin)}`
+  }
+  return `${dia} · ${horaEnLima(evento.inicio)}–${horaEnLima(evento.fin)}`
+}
 
 // Panel con los detalles de un evento. Es un <dialog> nativo (como el resumen del día):
 // el navegador maneja el fondo oscuro, la tecla Esc y el foco.
 //
 //   tarea:    la fila de `tasks` del evento (solo si su origen es la app); con ella se
 //             muestran las mismas acciones que en "Hoy": Completar, Justificar, Deshacer.
+//             Los eventos de Google (origen 'google') no tienen tarea: el panel es de solo lectura.
 //   cambiar:  (id, campos) => Promise, el `cambiar` de useTasks
 //   onCerrar: se llama al cerrar por cualquier vía (botón, Esc o clic afuera)
 export default function PanelEvento({ evento, tarea, cambiar, onCerrar }) {
@@ -53,10 +67,31 @@ export default function PanelEvento({ evento, tarea, cambiar, onCerrar }) {
             />
           </ul>
         ) : (
-          // Eventos que no son pendientes de la app (p. ej. Google en la Fase 3): solo lectura.
+          // Eventos que no son pendientes de la app (los de Google): solo lectura.
           <div>
+            {evento.origen === 'google' && (
+              <p className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                <IconoGoogle /> Google Calendar
+              </p>
+            )}
             <h2 className="font-semibold">{evento.titulo}</h2>
             {evento.curso && <p className="text-sm text-gray-600 dark:text-gray-400">{evento.curso}</p>}
+            {evento.origen === 'google' && (
+              <div className="mt-2 space-y-1 text-sm">
+                <p>{textoHorario(evento)}</p>
+                {evento.lugar && <p className="break-words text-gray-600 dark:text-gray-400">📍 {evento.lugar}</p>}
+                {evento.enlace && (
+                  <a
+                    href={evento.enlace}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block pt-1 font-medium text-indigo-700 underline dark:text-indigo-300"
+                  >
+                    Abrir en Google Calendar
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         )}
 

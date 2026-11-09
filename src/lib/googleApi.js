@@ -22,3 +22,12 @@ export async function desconectarGoogle() {
   const { error } = await supabase.functions.invoke('google-disconnect')
   if (error) throw registrarError(error)
 }
+
+// Eventos de Google Calendar entre dos instantes ISO (máximo 100 días de rango).
+// Devuelve { estado, eventos, truncado }; 'estado' es 'ok', 'no_conectado', 'reconectar' o
+// 'permisos_incompletos'. Los eventos vienen crudos de la función: los convierte googleAEventos.
+export async function obtenerEventosGoogle(desde, hasta) {
+  const { data, error } = await supabase.functions.invoke('google-calendar-events', { body: { desde, hasta } })
+  if (error) throw registrarError(error)
+  return { estado: data.estado, eventos: data.eventos ?? [], truncado: !!data.truncado }
+}

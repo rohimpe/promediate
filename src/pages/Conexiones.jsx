@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
+import { invalidarEventosGoogle } from '../hooks/useGoogleEventos'
 import {
   desconectarGoogle,
   obtenerConexionGoogle,
@@ -64,6 +65,7 @@ export default function Conexiones() {
     setOcupado(true)
     try {
       await desconectarGoogle()
+      invalidarEventosGoogle() // el calendario no debe seguir mostrando los eventos ya cargados
       setConexion({ conectado: false, email_google: null, estado: null })
     } catch {
       setError('No se pudo desconectar Google. Inténtalo de nuevo.')

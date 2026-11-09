@@ -12,7 +12,7 @@ import {
 const MAX_PUNTOS = 4
 
 // Cuadrícula del mes (semanas de lunes a domingo). Cada día muestra puntos de color,
-// uno por evento (los hechos se ven tenues), y "+N" si hay más de los que caben.
+// uno por evento (los hechos se ven tenues; los de Google son cuadraditos), y "+N" si hay más de los que caben.
 //   fecha:       cualquier día del mes a mostrar
 //   alDia(dia):  se llama al tocar un día
 //   onCrear({ fecha }): opcional; si se pasa, cada casilla tiene un "+" que lo llama
@@ -60,7 +60,7 @@ export default function VistaMes({ fecha, eventosPorDia, hoy, alDia, onCrear }) 
                   {eventos.slice(0, MAX_PUNTOS).map((e) => (
                     <span
                       key={e.id}
-                      className={`size-2 rounded-full ${e.estado === 'vencida' ? 'ring-2 ring-red-500' : ''} ${
+                      className={`size-2 ${e.origen === 'google' ? 'rounded-[2px]' : 'rounded-full'} ${e.estado === 'vencida' ? 'ring-2 ring-red-500' : ''} ${
                         e.estado === 'completada' || e.estado === 'justificada' ? 'opacity-40' : ''
                       }`}
                       style={{ backgroundColor: e.estado === 'justificada' ? COLOR_JUSTIFICADA : e.color }}

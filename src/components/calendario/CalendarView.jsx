@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
-import { agruparPorDia } from '../../lib/calendario'
+import { agruparPorDia, rangoDeVista } from '../../lib/calendario'
 import {
   formatearDiaLargo,
   formatearMesAnio,
@@ -28,6 +28,9 @@ const NOMBRE_VISTA = { dia: 'Día', semana: 'Semana', mes: 'Mes' }
 //   onCrear:        (valores) => … para crear un pendiente desde el calendario. `valores` son los
 //                   valores iniciales de <PendienteForm> ({ fecha, tipo, horaInicio, … }). Si no se
 //                   pasa, el calendario es solo de lectura (sin botón "+ Nuevo" ni toques para crear).
+//   onRangoVisible: ({ desde, hasta }) => … con los días ('YYYY-MM-DD', ambos incluidos) que muestra la
+//                   vista actual; se llama al montar y cada vez que cambia (otra semana, otro mes…).
+//                   Conviene que sea una función estable (un setState), no una nueva en cada render.
 export default function CalendarView({
   eventos,
   onSeleccionar,
@@ -36,6 +39,7 @@ export default function CalendarView({
   alturaMaxima = 640,
   onElegirDia,
   onCrear,
+  onRangoVisible,
 }) {
   const hoy = hoyEnLima()
   const ancha = useMediaQuery('(min-width: 640px)')
@@ -48,6 +52,11 @@ export default function CalendarView({
   // En celular no cabe una semana: la vista "semana" se muestra como un solo día.
   const vistaActual = vista === 'semana' && !ancha && vistas.includes('dia') ? 'dia' : vista
   const botones = vistas.filter((v) => ancha || v !== 'semana' || !vistas.includes('dia'))
+
+  const { desde, hasta } = rangoDeVista(vistaActual, fecha)
+  useEffect(() => {
+    onRangoVisible?.({ desde, hasta })
+  }, [desde, hasta, onRangoVisible])
 
   function mover(direccion) {
     if (vistaActual === 'mes') setFecha((f) => sumarMeses(f, direccion))

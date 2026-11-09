@@ -1,4 +1,14 @@
-import { fechaEnLima, instanteLima, minutosEnLima } from './fechas'
+import {
+  diasEnMes,
+  diaSemana,
+  diasEntre,
+  fechaEnLima,
+  inicioMes,
+  inicioSemana,
+  instanteLima,
+  minutosEnLima,
+  sumarDias,
+} from './fechas'
 import { estaVencida } from './priority'
 import { HORA_ENTREGA_POR_DEFECTO } from './tipos'
 
@@ -10,15 +20,21 @@ import { HORA_ENTREGA_POR_DEFECTO } from './tipos'
 //   inicio      Date (instante). Una entrega tiene inicio = fin = su hora límite.
 //   fin         Date
 //   todoElDia   true si no tiene hora (se muestra en la franja de arriba)
-//   tipo        'entrega' | 'actividad'   (en la Fase 3: también 'evento' de Google)
+//   tipo        'entrega' | 'actividad' | 'evento' (los de Google)
 //   color       '#rrggbb'
 //   estado      'pendiente' | 'completada' | 'justificada' | 'vencida'
 //   origen      'app' | 'google'
 //   curso       nombre del curso o null (solo informativo)
+//
+// Solo los eventos de Google traen además:
+//   lugar       texto o null
+//   enlace      dirección https de Google Calendar o null
 // ---------------------------------------------------------------------
 
 // Color fijo de las actividades (las entregas usan el color de su curso).
 export const COLOR_ACTIVIDAD = '#14b8a6'
+// Color fijo de los eventos de Google Calendar: un gris azulado que no está entre los de los cursos.
+export const COLOR_GOOGLE = '#64748b'
 // Entrega sin curso: el índigo de la app.
 export const COLOR_SIN_CURSO = '#6366f1'
 // Color de lo justificado (se ve apagado).
@@ -63,6 +79,84 @@ export function tareasAEventos(tareas) {
   }
 
   return eventos
+}
+
+// Un evento de todo el día que dura meses no tiene sentido dibujarlo día por día más allá de esto.
+const MAX_DIAS_TODO_EL_DIA = 62
+const FECHA = /^\d{4}-\d{2}-\d{2}$/
+
+// Convierte los eventos que devuelve la función google-calendar-events en eventos normalizados.
+//
+// - Con hora: Google manda un instante con su offset original ("2026-11-10T09:00:00+01:00").
+//   new Date() lo convierte al instante real, y toda la app lo muestra en Lima (horaEnLima,
+//   fechaEnLima…), así que el offset de origen ya no importa.
+// - De todo el día: Google manda fechas sin hora ('2026-11-10', fin exclusivo). NO se pasan por
+//   new Date('2026-11-10') (eso es la medianoche UTC, que en Lima es el día anterior a las 19:00):
+//   se toman como días del calendario de Lima. Si dura varios días, sale un evento por día.
+export function googleAEventos(lista) {
+  const eventos = []
+
+  for (const g of lista) {
+    const comun = {
+      titulo: g.titulo,
+      todoElDia: g.todoElDia,
+      tipo: 'evento',
+      color: COLOR_GOOGLE,
+      estado: 'pendiente',
+      origen: 'google',
+      curso: null,
+      lugar: g.lugar ?? null,
+      // Solo enlaces https: el enlace viene de fuera y acaba en un <a href>.
+      enlace: typeof g.enlace === 'string' && g.enlace.startsWith('https://') ? g.enlace : null,
+    }
+
+    if (g.todoElDia) {
+      if (!FECHA.test(g.inicio)) continue
+      const dias = FECHA.test(g.fin) ? diasEntre(g.inicio, g.fin) : 1
+      for (let i = 0; i < Math.min(Math.max(dias, 1), MAX_DIAS_TODO_EL_DIA); i++) {
+        const dia = sumarDias(g.inicio, i)
+        const medianoche = instanteLima(dia, '00:00')
+        eventos.push({ ...comun, id: `google:${g.id}:${dia}`, inicio: medianoche, fin: medianoche })
+      }
+    } else {
+      const inicio = new Date(g.inicio)
+      const fin = new Date(g.fin)
+      if (Number.isNaN(inicio.getTime())) continue
+      eventos.push({
+        ...comun,
+        id: `google:${g.id}`,
+        inicio,
+        fin: Number.isNaN(fin.getTime()) || fin < inicio ? inicio : fin,
+      })
+    }
+  }
+
+  return eventos
+}
+
+// Días ('YYYY-MM-DD', ambos incluidos) que muestra una vista del calendario con `fecha` como
+// día de referencia. Con esto se sabe qué rango pedirle a Google.
+export function rangoDeVista(vista, fecha) {
+  if (vista === 'mes') {
+    const primero = inicioMes(fecha)
+    const semanas = Math.ceil((diaSemana(primero) + diasEnMes(fecha)) / 7) // igual que VistaMes
+    const desde = inicioSemana(primero)
+    return { desde, hasta: sumarDias(desde, semanas * 7 - 1) }
+  }
+  if (vista === 'semana') {
+    const lunes = inicioSemana(fecha)
+    return { desde: lunes, hasta: sumarDias(lunes, 6) }
+  }
+  return { desde: fecha, hasta: fecha }
+}
+
+// Rango de días de Lima (hasta incluido) -> instantes ISO [desde, hasta) para la función de Google:
+// de las 00:00 del primer día a las 00:00 del día siguiente al último.
+export function rangoAInstantes({ desde, hasta }) {
+  return {
+    desde: instanteLima(desde, '00:00').toISOString(),
+    hasta: instanteLima(sumarDias(hasta, 1), '00:00').toISOString(),
+  }
 }
 
 // Agrupa por día en Lima: Map('YYYY-MM-DD' -> eventos de ese día, ordenados por hora).
