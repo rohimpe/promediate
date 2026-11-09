@@ -140,6 +140,7 @@ export function googleAEventos(lista) {
       titulo: g.titulo,
       todoElDia: g.todoElDia,
       tipo: 'evento',
+      colorId: g.colorId ?? null, // el de Google, sin tocar: el selector de color lo usa para decir de dónde viene el color
       color: colorGoogle(g.colorId),
       estado: 'pendiente',
       origen: 'google',

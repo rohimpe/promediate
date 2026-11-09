@@ -9,7 +9,6 @@ import {
   borrarSeguimiento,
   borrarSeguimientoDeSerie,
   guardarColorEvento,
-  guardarColorSerie,
   guardarColorTitulo,
   guardarSeguimiento,
   listarColores,
@@ -38,9 +37,10 @@ import { useAuth } from './useAuth'
 //   quitarSerie(x)          oculta toda la serie (y borra las marcas de sus ocurrencias)
 //   volverAIncluir(oculto)  borra la fila de google_ocultos
 //   cambiarIncluirTodoElDia(valor)
-//   cambiarColor(x, colorId, alcance)   color propio: alcance 'evento' (solo esta ocurrencia), 'serie' (toda la
-//                                       serie) o 'titulo' (todos los eventos con este título normalizado)
-//   restablecerColor(x, alcance)        borra el color propio: vuelve al de Google
+//   cambiarColor(x, colorId, alcance)   color propio: alcance 'evento' (solo esta ocurrencia) o 'titulo' (todos los
+//                                       eventos con este título normalizado). Ya no se crean colores por serie.
+//   quitarColor(x, alcance)             borra la fila de ese alcance ('evento', 'titulo' o 'serie', esta para filas
+//                                       antiguas); el evento vuelve al siguiente color que le toque
 export function useSeguimientoGoogle() {
   const { user } = useAuth()
   const userId = user?.id
@@ -126,23 +126,19 @@ export function useSeguimientoGoogle() {
     [userId],
   )
 
-  // Al pintar manda el color de la ocurrencia, luego el de la serie y luego el del título. Por eso, al pintar con
-  // un alcance más amplio también se borran los colores propios MÁS ESPECÍFICOS de ESTE evento (si no, seguiría
-  // con el suyo y no se vería el cambio): "serie" borra el de la ocurrencia; "título" borra el de la ocurrencia y
-  // el de su serie. Restablecer funciona igual. Las demás ocurrencias con color propio lo conservan (la base no
-  // sabe de qué serie o título son).
+  // Al pintar manda el color de la ocurrencia, luego el de la serie (solo filas antiguas) y luego el del título.
+  // Por eso, al pintar por título también se borran los colores propios MÁS ESPECÍFICOS de ESTE evento (si no,
+  // seguiría con el suyo y no se vería el cambio): el de la ocurrencia y el de su serie. Las demás ocurrencias
+  // con color propio lo conservan (la base no sabe de qué serie o título son).
   const cambiarColor = useCallback(
     async (x, colorId, alcance) => {
       const a = alcanceDeColor(x, alcance)
       const titulo = normalizarTitulo(x.titulo)
       const guardado = coloresGuardados(x, reglas)
 
-      let fila
-      if (a === 'titulo') fila = await guardarColorTitulo(titulo, colorId)
-      else if (a === 'serie') fila = await guardarColorSerie(x.serieId, colorId)
-      else fila = await guardarColorEvento(x.googleId, colorId)
+      const fila = a === 'titulo' ? await guardarColorTitulo(titulo, colorId) : await guardarColorEvento(x.googleId, colorId)
 
-      const quitarEvento = a !== 'evento' && guardado.evento !== null
+      const quitarEvento = a === 'titulo' && guardado.evento !== null
       const quitarSerie = a === 'titulo' && guardado.serie !== null
       if (quitarEvento) await borrarColorEvento(x.googleId)
       if (quitarSerie) await borrarColorSerie(x.serieId)
@@ -160,29 +156,23 @@ export function useSeguimientoGoogle() {
     [reglas],
   )
 
-  const restablecerColor = useCallback(
-    async (x, alcance) => {
-      const a = alcanceDeColor(x, alcance)
+  // Quita SOLO la fila del alcance pedido ('evento', 'titulo' o 'serie', esta última solo para filas antiguas).
+  // El evento vuelve al siguiente color que le corresponda (serie, título, Google o el azul por defecto).
+  const quitarColor = useCallback(async (x, alcance) => {
+    if (alcance === 'titulo') {
       const titulo = normalizarTitulo(x.titulo)
-      const guardado = coloresGuardados(x, reglas)
-
-      const quitarTitulo = a === 'titulo' && guardado.titulo !== null
-      const quitarSerie = a !== 'evento' && guardado.serie !== null
-      const quitarEvento = guardado.evento !== null
-      if (quitarTitulo) await borrarColorTitulo(titulo)
-      if (quitarSerie) await borrarColorSerie(x.serieId)
-      if (quitarEvento) await borrarColorEvento(x.googleId)
-      setColores((actuales) =>
-        actuales.filter(
-          (c) =>
-            !(quitarTitulo && c.titulo_norm === titulo) &&
-            !(quitarSerie && c.serie_id === x.serieId) &&
-            !(quitarEvento && c.google_event_id === x.googleId),
-        ),
-      )
-    },
-    [reglas],
-  )
+      if (!titulo) return
+      await borrarColorTitulo(titulo)
+      setColores((actuales) => actuales.filter((c) => c.titulo_norm !== titulo))
+    } else if (alcance === 'serie') {
+      if (!x.serieId) return
+      await borrarColorSerie(x.serieId)
+      setColores((actuales) => actuales.filter((c) => c.serie_id !== x.serieId))
+    } else {
+      await borrarColorEvento(x.googleId)
+      setColores((actuales) => actuales.filter((c) => c.google_event_id !== x.googleId))
+    }
+  }, [])
 
   return {
     filas,
@@ -199,7 +189,7 @@ export function useSeguimientoGoogle() {
     volverAIncluir,
     cambiarIncluirTodoElDia,
     cambiarColor,
-    restablecerColor,
+    quitarColor,
   }
 }
 

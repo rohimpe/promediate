@@ -92,17 +92,6 @@ export async function guardarColorEvento(googleId, colorId) {
   return data
 }
 
-// Pinta una serie entera.
-export async function guardarColorSerie(serieId, colorId) {
-  const { data, error } = await supabase
-    .from('google_colores')
-    .upsert({ serie_id: serieId, color_id: colorId }, { onConflict: 'user_id,serie_id' })
-    .select()
-    .single()
-  if (error) throw registrarError(error)
-  return data
-}
-
 // Pinta todos los eventos con el mismo título. `tituloNorm` viene de normalizarTitulo (seguimiento.js).
 export async function guardarColorTitulo(tituloNorm, colorId) {
   const { data, error } = await supabase
@@ -114,7 +103,8 @@ export async function guardarColorTitulo(tituloNorm, colorId) {
   return data
 }
 
-// Restablecer: borra la fila y el evento vuelve a su color de Google.
+// Quitar color: borra la fila de ese alcance (el evento vuelve al siguiente color que le corresponda).
+// La de serie solo sirve para las filas antiguas: ya no se crean.
 export async function borrarColorEvento(googleId) {
   const { error } = await supabase.from('google_colores').delete().eq('google_event_id', googleId)
   if (error) throw registrarError(error)

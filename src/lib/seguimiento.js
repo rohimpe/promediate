@@ -76,12 +76,11 @@ export function normalizarTitulo(titulo) {
     .trim()
 }
 
-// A qué se aplica un color propio: solo esta ocurrencia, toda su serie o todos los eventos con su título.
-// Si el evento no puede usar el alcance pedido (no tiene serie, o su título queda vacío) se usa uno más chico.
+// A qué se aplica un color propio NUEVO: solo esta ocurrencia o todos los eventos con su título. Ya no se crean
+// colores por serie (los que existen en google_colores se siguen respetando al pintar).
+// Si el título queda vacío al normalizarlo, "título" baja a "evento".
 export function alcanceDeColor(x, alcance) {
-  if (alcance === 'titulo' && normalizarTitulo(x.titulo)) return 'titulo'
-  if (alcance === 'serie' && x.serieId) return 'serie'
-  return 'evento'
+  return alcance === 'titulo' && normalizarTitulo(x.titulo) ? 'titulo' : 'evento'
 }
 
 // Los colores propios guardados que le corresponden a un evento, uno por alcance (colorId o null).
