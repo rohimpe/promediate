@@ -1,7 +1,7 @@
 import { construirArbol } from './arbol'
 import { dividirChecklist } from './checklist'
 import { calcularCurso } from './grades'
-import { seguidosDeHoy } from './seguimiento'
+import { eventosDeHoy } from './seguimiento'
 
 // Funciones puras que preparan los datos de las tarjetas de Inicio.
 // Reciben los datos ya cargados (una sola consulta compartida) y no guardan nada.
@@ -14,21 +14,21 @@ export function nombreParaSaludo(nombrePerfil, email) {
   return nombrePerfil?.trim() || email?.split('@')[0] || ''
 }
 
-// Lo de hoy: primero los eventos de Google que sigue el usuario (todo el día y luego por hora)
-// y después los pendientes por prioridad calculada.
-//   pendientes:    por hacer hoy (pendientes de la app y seguidos de Google; los de Google traen origen: 'google')
-//   hechas:        cuántos se completaron o justificaron hoy (incluye los seguidos de Google)
+// Lo de hoy. Tus pendientes y los eventos de Google se cuentan por separado:
+//   pendientes:    por hacer hoy, por prioridad calculada
+//   hechas, total: cuántos se completaron o justificaron hoy y cuántos hay en total ("X de Y completados")
 //   actividadesVencidas: actividades de días anteriores sin cerrar (las entregas vencidas
 //                  se ven en "Próximas entregas")
-//   seguidos:      los seguidos de Google (useSeguidosGoogle), opcional
-export function resumenDeHoy(tareas, hoy, seguidos = []) {
+//   eventos:       los eventos de Google de hoy que entran a pendientes (usePendientesGoogle): { pendientes (por hora),
+//                  hechas, total }. Los eventos sin marcar de días anteriores NO suman a las vencidas.
+export function resumenDeHoy(tareas, hoy, eventosGoogle = []) {
   const { hoyPendientes, hechas, vencidas } = dividirChecklist(tareas, hoy)
-  const google = seguidosDeHoy(seguidos, hoy)
   return {
-    pendientes: [...google.pendientes, ...hoyPendientes],
-    hechas: hechas.length + google.hechas.length,
-    total: hoyPendientes.length + hechas.length + google.pendientes.length + google.hechas.length,
+    pendientes: hoyPendientes,
+    hechas: hechas.length,
+    total: hoyPendientes.length + hechas.length,
     actividadesVencidas: vencidas.filter((t) => t.tipo === 'actividad').length,
+    eventos: eventosDeHoy(eventosGoogle, hoy),
   }
 }
 

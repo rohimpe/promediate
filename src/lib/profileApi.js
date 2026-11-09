@@ -32,3 +32,21 @@ export async function obtenerNombrePerfil(userId) {
   if (error) throw registrarError(error)
   return data?.nombre?.trim() || null
 }
+
+// ¿Los eventos de Google de todo el día entran a los pendientes? (false si no hay perfil o falla la columna).
+export async function obtenerIncluirTodoElDia(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('google_incluir_todo_el_dia')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw registrarError(error)
+  return data?.google_incluir_todo_el_dia ?? false
+}
+
+export async function guardarIncluirTodoElDia(userId, valor) {
+  const { error } = await supabase
+    .from('profiles')
+    .upsert({ id: userId, google_incluir_todo_el_dia: valor })
+  if (error) throw registrarError(error)
+}

@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import AccionesSeguido from '../components/AccionesSeguido'
+import AccionesEventoGoogle from '../components/AccionesEventoGoogle'
 import { IconoGoogle } from '../components/calendario/BloqueEvento'
 import TarjetaGoogle from '../components/TarjetaGoogle'
 import TarjetaTarea from '../components/TarjetaTarea'
-import { useSeguidosGoogle } from '../hooks/useSeguidosGoogle'
+import { usePendientesGoogle } from '../hooks/usePendientesGoogle'
 import { useSeguimientoGoogle } from '../hooks/useSeguimientoGoogle'
 import { useTasks } from '../hooks/useTasks'
 import { hoyEnLima } from '../lib/fechas'
 import { ordenarPorPrioridad } from '../lib/priority'
-import { rangoPendientesGoogle, seguidosParaPendientes } from '../lib/seguimiento'
+import { eventosParaPendientes, rangoPendientesGoogle } from '../lib/seguimiento'
 
 const FILTRO_ACTIVO = 'bg-indigo-600 text-white'
 const FILTRO_INACTIVO = 'border border-gray-300 hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800'
@@ -24,13 +24,14 @@ const AVISO_GOOGLE = {
 export default function Tareas() {
   const { tareas, cargando, error, borrar } = useTasks()
   const [errorBorrar, setErrorBorrar] = useState('')
-  const [filtro, setFiltro] = useState('app') // 'app' = tus pendientes · 'google' = eventos de Google que sigues
+  const [filtro, setFiltro] = useState('app') // 'app' = tus pendientes · 'google' = eventos de Google
 
   const hoy = hoyEnLima()
   const seguimiento = useSeguimientoGoogle()
   // Solo se le pregunta a Google cuando se abre la pestaña "Google".
-  const seguidos = useSeguidosGoogle(seguimiento, rangoPendientesGoogle(hoy), filtro === 'google')
-  const eventosGoogle = useMemo(() => seguidosParaPendientes(seguidos.seguidos, hoy), [seguidos.seguidos, hoy])
+  // Mismo rango que Inicio y Hoy: los tres comparten una sola petición a Google.
+  const google = usePendientesGoogle(seguimiento, rangoPendientesGoogle(hoy), filtro === 'google')
+  const eventosGoogle = useMemo(() => eventosParaPendientes(google.eventos, hoy), [google.eventos, hoy])
 
   async function onBorrar(tarea) {
     if (!window.confirm(`¿Borrar "${tarea.titulo}"? No se puede deshacer.`)) return
@@ -55,7 +56,7 @@ export default function Tareas() {
     </button>
   )
 
-  const avisoGoogle = AVISO_GOOGLE[seguidos.estadoGoogle]
+  const avisoGoogle = AVISO_GOOGLE[google.estadoGoogle]
 
   return (
     <>
@@ -124,12 +125,12 @@ export default function Tareas() {
       ) : (
         <>
           <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
-            Eventos de Google Calendar que sigues: los próximos 14 días y los de los últimos 7 que no marcaste.
+            Eventos de tu Google Calendar: los próximos 14 días y los de los últimos 7 que no marcaste. Quita los que no quieras desde el Calendario.
           </p>
 
-          {seguidos.cargando && <p className="text-gray-600 dark:text-gray-400">Cargando…</p>}
+          {google.cargando && <p className="text-gray-600 dark:text-gray-400">Cargando…</p>}
 
-          {(seguimiento.error || seguidos.errorGoogle) && (
+          {(seguimiento.error || google.errorGoogle) && (
             <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">
               {seguimiento.error || 'No se pudo cargar Google Calendar. Prueba de nuevo más tarde.'}
             </p>
@@ -147,9 +148,9 @@ export default function Tareas() {
             </p>
           )}
 
-          {!seguidos.cargando && !seguimiento.error && eventosGoogle.length === 0 && (
+          {!google.cargando && !seguimiento.error && eventosGoogle.length === 0 && (
             <p className="text-gray-600 dark:text-gray-400">
-              No sigues ningún evento de Google en estos días. Ábrelo desde el Calendario y toca “Seguir este evento”.
+              No hay eventos de Google en estos días.
             </p>
           )}
 
@@ -157,8 +158,8 @@ export default function Tareas() {
             {eventosGoogle.map((s) => (
               <TarjetaGoogle
                 key={s.id}
-                seguido={s}
-                acciones={<AccionesSeguido seguido={s} seguimiento={seguimiento} />}
+                evento={s}
+                acciones={<AccionesEventoGoogle evento={s} seguimiento={seguimiento} />}
               />
             ))}
           </ul>

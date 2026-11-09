@@ -1,52 +1,61 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { camposPendiente } from '../lib/checklist'
-import { conjuntoDeSeries, filasPorId, resumenDeEvento } from '../lib/seguimiento'
+import { guardarIncluirTodoElDia, obtenerIncluirTodoElDia } from '../lib/profileApi'
+import { armarReglas, resumenDeEvento } from '../lib/seguimiento'
 import {
-  borrarSerieSeguida,
+  borrarOculto,
   borrarSeguimiento,
-  crearSerieSeguida,
+  borrarSeguimientoDeSerie,
   guardarSeguimiento,
+  listarOcultos,
   listarSeguimiento,
-  listarSeriesSeguidas,
+  ocultarEvento,
+  ocultarSerie,
 } from '../lib/seguimientoApi'
+import { useAuth } from './useAuth'
 
-// Carga lo que el usuario sigue de Google Calendar y permite seguir, dejar de seguir y marcar.
+// Carga lo guardado sobre los eventos de Google (marcados, ocultos y la preferencia de "todo el día") y
+// ofrece las acciones. La página lo crea UNA vez y se lo pasa a lo que lo necesite.
 //   const seguimiento = useSeguimientoGoogle()
-//   seguimiento.filas, .series         lo guardado (google_seguimiento, google_series_seguidas)
-//   seguimiento.porId, .seriesSeguidas  los mismos datos indexados (Map y Set) para buscar rápido
+//   seguimiento.filas, .ocultos         google_seguimiento (marcados) y google_ocultos
+//   seguimiento.reglas                  lo mismo indexado (ver armarReglas) para buscar rápido
+//   seguimiento.incluirTodoElDia        profiles.google_incluir_todo_el_dia
 //   seguimiento.cargando, .error
 //
-// Las acciones reciben un evento del calendario o un "seguido" (los dos traen googleId, serieId,
+// Las acciones reciben un evento del calendario o un item de Hoy/Pendientes (los dos traen googleId, serieId,
 // titulo, inicio, fin y todoElDia). Si fallan lanzan el error: quien las llama muestra el aviso.
-//   seguirEvento(x)        crea la fila con estado 'pendiente'
-//   seguirSerie(x)         sigue toda la serie de x
-//   marcar(x, campos)      Fui / Justificar: crea la fila si no existía (ocurrencia virtual) o la actualiza
-//   deshacer(x)            vuelve a pendiente (ver más abajo)
-//   dejarDeSeguir(x)       borra la fila
-//   dejarDeSeguirSerie(x)  borra la serie y CONSERVA las filas ya marcadas
+//   marcar(x, campos)       Fui / Justificar: crea la fila con el resumen del evento, o la actualiza
+//   deshacer(x)             borra la fila: vuelve a ser pendiente
+//   quitarEvento(x)         lo oculta (y borra su marca, si tenía)
+//   quitarSerie(x)          oculta toda la serie (y borra las marcas de sus ocurrencias)
+//   volverAIncluir(oculto)  borra la fila de google_ocultos
+//   cambiarIncluirTodoElDia(valor)
 export function useSeguimientoGoogle() {
+  const { user } = useAuth()
+  const userId = user?.id
   const [filas, setFilas] = useState([])
-  const [series, setSeries] = useState([])
+  const [ocultos, setOcultos] = useState([])
+  const [incluirTodoElDia, setIncluirTodoElDia] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (!userId) return
     let activo = true // evita actualizar el estado si el componente ya se cerró
-    Promise.all([listarSeguimiento(), listarSeriesSeguidas()])
-      .then(([f, s]) => {
+    Promise.all([listarSeguimiento(), listarOcultos(), obtenerIncluirTodoElDia(userId)])
+      .then(([f, o, todoElDia]) => {
         if (!activo) return
         setFilas(f)
-        setSeries(s)
+        setOcultos(o)
+        setIncluirTodoElDia(todoElDia)
       })
-      .catch(() => activo && setError('No se pudo cargar lo que sigues de Google Calendar.'))
+      .catch(() => activo && setError('No se pudieron cargar tus eventos de Google.'))
       .finally(() => activo && setCargando(false))
     return () => {
       activo = false
     }
-  }, [])
+  }, [userId])
 
-  const porId = useMemo(() => filasPorId(filas), [filas])
-  const seriesSeguidas = useMemo(() => conjuntoDeSeries(series), [series])
+  const reglas = useMemo(() => armarReglas(filas, ocultos, incluirTodoElDia), [filas, ocultos, incluirTodoElDia])
 
   // Guarda la fila en pantalla reemplazando la de la misma ocurrencia (nunca queda una repetida).
   const ponerFila = useCallback((fila) => {
@@ -60,42 +69,53 @@ export function useSeguimientoGoogle() {
     [ponerFila],
   )
 
-  const seguirEvento = useCallback((x) => marcar(x, camposPendiente()), [marcar])
-
-  const dejarDeSeguir = useCallback(async (x) => {
+  const deshacer = useCallback(async (x) => {
     await borrarSeguimiento(x.googleId)
     setFilas((actuales) => actuales.filter((f) => f.google_event_id !== x.googleId))
   }, [])
 
-  const seguirSerie = useCallback(async (x) => {
-    const serie = await crearSerieSeguida(x.serieId, x.titulo)
-    setSeries((actuales) => [...actuales.filter((s) => s.serie_id !== serie.serie_id), serie])
+  // Primero se oculta y después se borra la marca: si algo falla a medias, el evento no desaparece sin
+  // dejar rastro y basta con reintentar.
+  const quitarEvento = useCallback(async (x) => {
+    const oculto = await ocultarEvento(x.googleId, x.titulo)
+    setOcultos((actuales) => [oculto, ...actuales.filter((o) => o.id !== oculto.id)])
+    await borrarSeguimiento(x.googleId)
+    setFilas((actuales) => actuales.filter((f) => f.google_event_id !== x.googleId))
   }, [])
 
-  const dejarDeSeguirSerie = useCallback(async (x) => {
-    await borrarSerieSeguida(x.serieId)
-    setSeries((actuales) => actuales.filter((s) => s.serie_id !== x.serieId))
+  const quitarSerie = useCallback(async (x) => {
+    const oculto = await ocultarSerie(x.serieId, x.titulo)
+    setOcultos((actuales) => [oculto, ...actuales.filter((o) => o.id !== oculto.id)])
+    await borrarSeguimientoDeSerie(x.serieId)
+    setFilas((actuales) => actuales.filter((f) => f.serie_id !== x.serieId))
   }, [])
 
-  // Si la serie sigue seguida, la ocurrencia vuelve a ser "virtual" (se borra su fila, como si nunca se hubiera
-  // marcado). Si no, la fila es lo único que la hace seguida: se deja en 'pendiente'.
-  const deshacer = useCallback(
-    (x) => (x.serieId && seriesSeguidas.has(x.serieId) ? dejarDeSeguir(x) : marcar(x, camposPendiente())),
-    [seriesSeguidas, dejarDeSeguir, marcar],
+  const volverAIncluir = useCallback(async (oculto) => {
+    await borrarOculto(oculto.id)
+    setOcultos((actuales) => actuales.filter((o) => o.id !== oculto.id))
+  }, [])
+
+  const cambiarIncluirTodoElDia = useCallback(
+    async (valor) => {
+      await guardarIncluirTodoElDia(userId, valor)
+      setIncluirTodoElDia(valor)
+    },
+    [userId],
   )
 
   return {
     filas,
-    series,
-    porId,
-    seriesSeguidas,
+    ocultos,
+    reglas,
+    incluirTodoElDia,
     cargando,
     error,
-    seguirEvento,
-    seguirSerie,
     marcar,
     deshacer,
-    dejarDeSeguir,
-    dejarDeSeguirSerie,
+    quitarEvento,
+    quitarSerie,
+    volverAIncluir,
+    cambiarIncluirTodoElDia,
   }
 }
+

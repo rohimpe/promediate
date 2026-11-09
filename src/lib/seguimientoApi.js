@@ -1,17 +1,13 @@
 import { registrarError } from './errores'
 import { supabase } from './supabaseClient'
 
-// Seguimiento de eventos de Google Calendar. Todas las consultas pasan por RLS:
+// Eventos de Google Calendar marcados u ocultos. Todas las consultas pasan por RLS:
 // Supabase solo devuelve / modifica las filas con user_id = auth.uid() (la base lo rellena sola).
+
+// --- google_seguimiento: solo los eventos marcados (completada / justificada) ---
 
 export async function listarSeguimiento() {
   const { data, error } = await supabase.from('google_seguimiento').select('*')
-  if (error) throw registrarError(error)
-  return data
-}
-
-export async function listarSeriesSeguidas() {
-  const { data, error } = await supabase.from('google_series_seguidas').select('*')
   if (error) throw registrarError(error)
   return data
 }
@@ -29,14 +25,41 @@ export async function guardarSeguimiento(campos) {
   return data
 }
 
+// Deshacer: borra la fila y el evento vuelve a ser un pendiente virtual.
 export async function borrarSeguimiento(googleId) {
   const { error } = await supabase.from('google_seguimiento').delete().eq('google_event_id', googleId)
   if (error) throw registrarError(error)
 }
 
-export async function crearSerieSeguida(serieId, titulo) {
+// Borra las marcas de todas las ocurrencias de una serie (al quitar la serie de los pendientes).
+export async function borrarSeguimientoDeSerie(serieId) {
+  const { error } = await supabase.from('google_seguimiento').delete().eq('serie_id', serieId)
+  if (error) throw registrarError(error)
+}
+
+// --- google_ocultos: lo que el usuario quitó de sus pendientes ---
+
+export async function listarOcultos() {
+  const { data, error } = await supabase.from('google_ocultos').select('*').order('created_at', { ascending: false })
+  if (error) throw registrarError(error)
+  return data
+}
+
+// Oculta un evento suelto. Con upsert, ocultarlo dos veces no da error ni duplica.
+export async function ocultarEvento(googleId, titulo) {
   const { data, error } = await supabase
-    .from('google_series_seguidas')
+    .from('google_ocultos')
+    .upsert({ google_event_id: googleId, titulo }, { onConflict: 'user_id,google_event_id' })
+    .select()
+    .single()
+  if (error) throw registrarError(error)
+  return data
+}
+
+// Oculta una serie entera.
+export async function ocultarSerie(serieId, titulo) {
+  const { data, error } = await supabase
+    .from('google_ocultos')
     .upsert({ serie_id: serieId, titulo }, { onConflict: 'user_id,serie_id' })
     .select()
     .single()
@@ -44,8 +67,8 @@ export async function crearSerieSeguida(serieId, titulo) {
   return data
 }
 
-// Solo borra la serie: las filas ya marcadas (google_seguimiento) se conservan.
-export async function borrarSerieSeguida(serieId) {
-  const { error } = await supabase.from('google_series_seguidas').delete().eq('serie_id', serieId)
+// "Volver a incluir": borra la fila de google_ocultos.
+export async function borrarOculto(id) {
+  const { error } = await supabase.from('google_ocultos').delete().eq('id', id)
   if (error) throw registrarError(error)
 }

@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { useGoogleEventos } from '../../hooks/useGoogleEventos'
 import { useMostrarGoogle } from '../../hooks/useMostrarGoogle'
 import { tareasAEventos } from '../../lib/calendario'
-import { conSeguimiento } from '../../lib/seguimiento'
+import { conEstadoDePendiente } from '../../lib/seguimiento'
 import NuevoPendienteModal from '../NuevoPendienteModal'
 import { IconoGoogle } from './BloqueEvento'
 import CalendarView from './CalendarView'
@@ -69,7 +69,7 @@ function AvisoGoogle({ estado, error, truncado }) {
 //
 //   tareas, cambiar, crear:  los de useTasks
 //   seguimiento:  el de useSeguimientoGoogle (la página lo crea una vez y lo comparte con Hoy, etc.).
-//                 Los eventos de Google que se siguen muestran su estado y se pueden marcar en el panel.
+//                 Los eventos de Google que entran a pendientes muestran su estado y se pueden marcar en el panel.
 //   El resto de las propiedades (vistas, vistaInicial, alturaMaxima…) van directo a <CalendarView>.
 export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimiento, ...propsCalendario }) {
   const [mostrar, setMostrar] = useMostrarGoogle()
@@ -79,10 +79,10 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimient
   const [nuevo, setNuevo] = useState(null) // valores iniciales del modal "Nuevo pendiente" (null = cerrado)
 
   const eventosApp = useMemo(() => tareasAEventos(tareas), [tareas])
-  // Los eventos de Google que se siguen llevan el estado de su seguimiento (completada, justificada…).
+  // Los eventos de Google que entran a pendientes llevan su estado (completada, justificada…); los ocultos quedan normales.
   const eventosGoogle = useMemo(
-    () => google.eventos.map((e) => conSeguimiento(e, seguimiento.porId, seguimiento.seriesSeguidas)),
-    [google.eventos, seguimiento.porId, seguimiento.seriesSeguidas],
+    () => google.eventos.map((e) => conEstadoDePendiente(e, seguimiento.reglas)),
+    [google.eventos, seguimiento.reglas],
   )
   const eventos = useMemo(() => [...eventosApp, ...eventosGoogle], [eventosApp, eventosGoogle])
 

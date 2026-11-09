@@ -1,20 +1,22 @@
 import { fechaEnLima, horaEnLima, sumarDias } from './fechas'
 
 // ---------------------------------------------------------------------
-// Seguir eventos de Google Calendar (Fase 3, parte B2).
+// Eventos de Google Calendar como pendientes (Fase 3, parte B2).
 //
-// Un evento de Google cuenta como "seguido" si:
-//   a) su `googleId` está en `google_seguimiento` (una fila: lo siguió o ya lo marcó), o
-//   b) su `serieId` está en `google_series_seguidas` (sigue toda la serie).
+// Los eventos de Google ENTRAN SOLOS a Hoy y Pendientes. El usuario puede quitar los que no quiera.
+// Un evento entra si:
+//   - tiene hora, o es de todo el día y el usuario activó "incluir eventos de todo el día"; y
+//   - su `googleId` no está en `google_ocultos`; y
+//   - su `serieId` no está en `google_ocultos`.
 //
-// Las ocurrencias de una serie seguida son pendientes VIRTUALES: se construyen al vuelo a partir
-// de los eventos de Google y no se guardan hasta que el usuario hace Fui o Justificar.
+// Su estado sale de `google_seguimiento`: sin fila = pendiente (virtual, no se guarda);
+// con fila = completada o justificada. Si ya hay fila, esa manda sobre cualquier otra regla.
 //
-// Todo lo que se muestra en Hoy / Pendientes / Inicio es un "seguido" (item) con esta forma:
+// Todo lo que se muestra en Hoy / Pendientes / Inicio es un "item" con esta forma:
 //   id, origen: 'google', tipo: 'evento', googleId, serieId, titulo,
 //   inicio (Date), fin (Date | null), todoElDia,
 //   estado ('pendiente' | 'completada' | 'justificada'), justificacion,
-//   guardado      true si tiene fila en la base de datos (false = virtual de una serie)
+//   guardado      true si tiene fila en la base de datos (false = pendiente virtual)
 //   soloGuardado  true si se muestra solo por su resumen guardado (Google no está disponible o ya
 //                 no devuelve el evento): la pantalla le pone la nota "(guardado)"
 // Es compatible con <AccionesChecklist> (usa id, estado y justificacion).
@@ -24,13 +26,14 @@ import { fechaEnLima, horaEnLima, sumarDias } from './fechas'
 export const DIAS_ADELANTE = 14
 export const DIAS_ATRAS = 7
 
-// Días de Lima ('YYYY-MM-DD') que hay que pedirle a Google para la lista de Pendientes.
+// Días de Lima ('YYYY-MM-DD') que se le piden a Google para Inicio, Hoy y Pendientes. Es el MISMO rango en
+// las tres páginas: así comparten una sola petición (y la caché de useGoogleEventos).
 export function rangoPendientesGoogle(hoy) {
   return { desde: sumarDias(hoy, -DIAS_ATRAS), hasta: sumarDias(hoy, DIAS_ADELANTE) }
 }
 
 // Resumen que se guarda en google_seguimiento. Sirve tanto para un evento del calendario como
-// para un seguido (los dos tienen googleId, serieId, titulo, inicio, fin y todoElDia).
+// para un item (los dos tienen googleId, serieId, titulo, inicio, fin y todoElDia).
 export function resumenDeEvento(x) {
   return {
     google_event_id: x.googleId,
@@ -42,9 +45,39 @@ export function resumenDeEvento(x) {
   }
 }
 
-function filaASeguido(fila) {
+// Lo guardado, indexado para buscar rápido. Es lo único que necesitan las demás funciones.
+//   filas:   google_seguimiento (eventos marcados)
+//   ocultos: google_ocultos
+//   incluirTodoElDia: profiles.google_incluir_todo_el_dia
+export function armarReglas(filas, ocultos, incluirTodoElDia) {
   return {
-    id: `seguido:${fila.google_event_id}`,
+    porId: new Map(filas.map((f) => [f.google_event_id, f])),
+    ocultosEventos: new Set(ocultos.filter((o) => o.google_event_id).map((o) => o.google_event_id)),
+    ocultosSeries: new Set(ocultos.filter((o) => o.serie_id).map((o) => o.serie_id)),
+    incluirTodoElDia: !!incluirTodoElDia,
+  }
+}
+
+// ¿Este evento de Google (del calendario o de la función) entra a pendientes?
+export function entraAPendientes(evento, reglas) {
+  if (reglas.porId.has(evento.googleId)) return true // ya marcado: esa fila manda
+  if (evento.todoElDia && !reglas.incluirTodoElDia) return false
+  if (reglas.ocultosEventos.has(evento.googleId)) return false
+  if (evento.serieId && reglas.ocultosSeries.has(evento.serieId)) return false
+  return true
+}
+
+// Evento de Google del calendario con el estado de sus pendientes. Los que no entran (ocultos, o de todo el
+// día con el interruptor apagado) quedan como un evento normal de solo lectura.
+export function conEstadoDePendiente(evento, reglas) {
+  if (!entraAPendientes(evento, reglas)) return evento
+  const fila = reglas.porId.get(evento.googleId)
+  return { ...evento, enPendientes: true, estado: fila?.estado ?? 'pendiente' }
+}
+
+function filaAItem(fila) {
+  return {
+    id: `google:${fila.google_event_id}`,
     origen: 'google',
     tipo: 'evento',
     googleId: fila.google_event_id,
@@ -60,10 +93,10 @@ function filaASeguido(fila) {
   }
 }
 
-// Ocurrencia de una serie seguida que aún no tiene fila.
-function eventoASeguido(evento) {
+// Evento de Google que entra a pendientes y todavía no tiene fila: pendiente virtual.
+function eventoAItem(evento) {
   return {
-    id: `seguido:${evento.googleId}`,
+    id: `google:${evento.googleId}`,
     origen: 'google',
     tipo: 'evento',
     googleId: evento.googleId,
@@ -79,32 +112,23 @@ function eventoASeguido(evento) {
   }
 }
 
-// Búsquedas rápidas: ocurrencia -> fila, y conjunto de series seguidas.
-export function filasPorId(filas) {
-  return new Map(filas.map((f) => [f.google_event_id, f]))
-}
-export function conjuntoDeSeries(series) {
-  return new Set(series.map((s) => s.serie_id))
-}
-
-// Todos los seguidos: las filas guardadas + las ocurrencias virtuales de las series seguidas.
+// Todos los eventos de Google que son pendientes: las filas guardadas + los eventos de Google que entran.
 //
-//   filas, series:  lo guardado (google_seguimiento, google_series_seguidas)
+//   filas, reglas:  lo guardado (google_seguimiento) y las reglas de armarReglas
 //   eventos:        eventos de Google ya normalizados (googleAEventos) del rango pedido
 //   estadoGoogle:   'ok' | 'no_conectado' | 'reconectar'… o null si todavía no hay respuesta
 //   truncado:       Google tenía más eventos de los que se trajeron
 //   rango:          { desde, hasta } de los eventos pedidos (solo ahí se puede decir "ya no está en Google")
 //
-// SIN DUPLICADOS: cada ocurrencia tiene un googleId único. Primero entran las filas guardadas (que ganan
-// siempre); una ocurrencia virtual solo se agrega si su googleId NO tiene fila. Así, una serie seguida
-// con ocurrencias ya marcadas muestra cada una una sola vez: las marcadas desde su fila y el resto virtuales.
-export function combinarSeguidos(filas, series, eventos, { estadoGoogle = null, truncado = false, rango = null } = {}) {
-  const seriesSeguidas = conjuntoDeSeries(series)
+// SIN DUPLICADOS: la clave de cada evento es su googleId (único por ocurrencia). Primero entran las filas
+// guardadas, que ganan siempre; un evento de Google solo se agrega si su googleId NO tiene fila. Así una serie
+// con ocurrencias ya marcadas muestra cada una una sola vez: las marcadas desde su fila y las demás, virtuales.
+// Si Google no está disponible, `eventos` llega vacío y solo se ven las filas.
+export function combinarEventosGoogle(filas, reglas, eventos, { estadoGoogle = null, truncado = false, rango = null } = {}) {
   const vivos = new Set(eventos.map((e) => e.googleId))
-  const tieneFila = new Set(filas.map((f) => f.google_event_id))
 
   const items = filas.map((fila) => {
-    const item = filaASeguido(fila)
+    const item = filaAItem(fila)
     const dia = fechaEnLima(item.inicio)
     const enRango = !!rango && dia >= rango.desde && dia <= rango.hasta
     item.soloGuardado =
@@ -114,30 +138,17 @@ export function combinarSeguidos(filas, series, eventos, { estadoGoogle = null, 
 
   const yaAgregados = new Set() // un evento de varios días llega partido por día, con el mismo googleId
   for (const e of eventos) {
-    if (!e.serieId || !seriesSeguidas.has(e.serieId)) continue
-    if (tieneFila.has(e.googleId) || yaAgregados.has(e.googleId)) continue
+    if (reglas.porId.has(e.googleId) || yaAgregados.has(e.googleId)) continue
+    if (!entraAPendientes(e, reglas)) continue
     yaAgregados.add(e.googleId)
-    items.push(eventoASeguido(e))
+    items.push(eventoAItem(e))
   }
 
   return items
 }
 
-// ¿Lo sigue el usuario? { fila, porSerie, seguido }. Para el panel y para el calendario.
-export function infoSeguimiento(evento, porId, seriesSeguidas) {
-  const fila = porId.get(evento.googleId) ?? null
-  const porSerie = !!evento.serieId && seriesSeguidas.has(evento.serieId)
-  return { fila, porSerie, seguido: !!fila || porSerie }
-}
-
-// Evento de Google del calendario con el estado de su seguimiento (los no seguidos quedan igual).
-export function conSeguimiento(evento, porId, seriesSeguidas) {
-  const { fila, seguido } = infoSeguimiento(evento, porId, seriesSeguidas)
-  return seguido ? { ...evento, seguido: true, estado: fila?.estado ?? 'pendiente' } : evento
-}
-
 // 'Todo el día', '10:00–11:30' o '10:00' (hora de Lima).
-export function horarioSeguido(s) {
+export function horarioEvento(s) {
   if (s.todoElDia) return 'Todo el día'
   if (!s.fin || s.fin <= s.inicio) return horaEnLima(s.inicio)
   return `${horaEnLima(s.inicio)}–${horaEnLima(s.fin)}`
@@ -151,20 +162,19 @@ export function ordenarPorHora(items) {
   )
 }
 
-// Lo seguido que cae hoy (hora de Lima): { pendientes, hechas }, ambos ordenados por hora.
-export function seguidosDeHoy(items, hoy) {
-  const deHoy = items.filter((s) => fechaEnLima(s.inicio) === hoy)
-  return {
-    pendientes: ordenarPorHora(deHoy.filter((s) => s.estado === 'pendiente')),
-    hechas: ordenarPorHora(deHoy.filter((s) => s.estado !== 'pendiente')),
-  }
+// Los eventos de Google que caen hoy (hora de Lima), por hora:
+//   { eventos, pendientes, hechas, total }  ("X de Y" = hechas.length de total)
+export function eventosDeHoy(items, hoy) {
+  const eventos = ordenarPorHora(items.filter((s) => fechaEnLima(s.inicio) === hoy))
+  const pendientes = eventos.filter((s) => s.estado === 'pendiente')
+  return { eventos, pendientes, hechas: eventos.length - pendientes.length, total: eventos.length }
 }
 
 // Lista de Pendientes > Google, por fecha:
-//   - hoy y los próximos 14 días: todos los seguidos (marcados o no)
+//   - hoy y los próximos 14 días: todos (marcados o no)
 //   - los últimos 7 días: solo los que siguen sin marcar, con `sinMarcar: true`
 // Lo más viejo que eso, sin marcar, no se muestra.
-export function seguidosParaPendientes(items, hoy) {
+export function eventosParaPendientes(items, hoy) {
   const limite = sumarDias(hoy, DIAS_ADELANTE)
   const desde = sumarDias(hoy, -DIAS_ATRAS)
   const lista = []

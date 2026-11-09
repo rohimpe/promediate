@@ -5,7 +5,7 @@ import { fechaEnLima, formatearDiaLargo, formatearFechaHora, horaEnLima } from '
 import AccionesChecklist from '../AccionesChecklist'
 import TarjetaTarea from '../TarjetaTarea'
 import { IconoGoogle } from './BloqueEvento'
-import SeguimientoGoogle from './SeguimientoGoogle'
+import PendienteGoogle from './PendienteGoogle'
 
 // 'Lunes 9 de noviembre · 10:00–11:30' (hora de Lima). Si cruza la medianoche, muestra ambas fechas.
 function textoHorario(evento) {
@@ -24,7 +24,7 @@ function textoHorario(evento) {
 //   tarea:    la fila de `tasks` del evento (solo si su origen es la app); con ella se
 //             muestran las mismas acciones que en "Hoy": Completar, Justificar, Deshacer.
 //             Los eventos de Google (origen 'google') no tienen tarea: muestran sus detalles y, con
-//             `seguimiento`, los botones para seguirlos y marcarlos (Fui / Justificar).
+//             `seguimiento`, los botones para marcarlos (Fui / Justificar) o quitarlos de tus pendientes.
 //   cambiar:  (id, campos) => Promise, el `cambiar` de useTasks
 //   seguimiento: lo que devuelve useSeguimientoGoogle(); sin él, los eventos de Google son de solo lectura
 //   onCerrar: se llama al cerrar por cualquier vía (botón, Esc o clic afuera)
@@ -95,7 +95,7 @@ export default function PanelEvento({ evento, tarea, cambiar, seguimiento, onCer
                 )}
               </div>
             )}
-            {evento.origen === 'google' && seguimiento && <SeguimientoGoogle evento={evento} seguimiento={seguimiento} />}
+            {evento.origen === 'google' && seguimiento && <PendienteGoogle evento={evento} seguimiento={seguimiento} />}
           </div>
         )}
 

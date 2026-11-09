@@ -5,11 +5,12 @@ import TarjetaProximas from '../components/inicio/TarjetaProximas'
 import { useAuth } from '../hooks/useAuth'
 import { useCursosConNotas } from '../hooks/useCursosConNotas'
 import { useNombrePerfil } from '../hooks/useNombrePerfil'
-import { useSeguidosGoogle } from '../hooks/useSeguidosGoogle'
+import { usePendientesGoogle } from '../hooks/usePendientesGoogle'
 import { useSeguimientoGoogle } from '../hooks/useSeguimientoGoogle'
 import { useTasks } from '../hooks/useTasks'
 import { formatearDiaLargo, hoyEnLima } from '../lib/fechas'
 import { nombreParaSaludo } from '../lib/inicio'
+import { rangoPendientesGoogle } from '../lib/seguimiento'
 
 // Página de Inicio. Carga los datos UNA vez (pendientes; cursos con evaluaciones; nombre del
 // perfil) y se los pasa a las tarjetas, en vez de que cada tarjeta haga su propia consulta.
@@ -21,10 +22,11 @@ export default function Inicio() {
   const { tareas, cargando, error, cambiar, crear } = useTasks()
   const cursos = useCursosConNotas()
   const perfil = useNombrePerfil(user?.id)
-  const seguimiento = useSeguimientoGoogle() // lo que se sigue de Google: lo comparten la tarjeta Hoy y el calendario
+  const seguimiento = useSeguimientoGoogle() // lo guardado de Google (marcados, ocultos): lo comparten la tarjeta Hoy y el calendario
 
   const hoy = hoyEnLima()
-  const seguidosDeHoy = useSeguidosGoogle(seguimiento, { desde: hoy, hasta: hoy })
+  // Mismo rango que Hoy y Pendientes: los tres comparten una sola petición a Google.
+  const google = usePendientesGoogle(seguimiento, rangoPendientesGoogle(hoy))
   const nombre = nombreParaSaludo(perfil.nombre, user?.email)
 
   return (
@@ -42,9 +44,9 @@ export default function Inicio() {
         <div className="lg:col-start-2">
           <TarjetaHoy
             tareas={tareas}
-            seguidos={seguidosDeHoy.seguidos}
+            eventosGoogle={google.eventos}
             seguimiento={seguimiento}
-            cargando={cargando || seguidosDeHoy.cargando}
+            cargando={cargando || google.cargando}
             error={error}
             cambiar={cambiar}
             hoy={hoy}

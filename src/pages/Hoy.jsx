@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import AccionesChecklist from '../components/AccionesChecklist'
-import TarjetaTarea from '../components/TarjetaTarea'
-import AccionesSeguido from '../components/AccionesSeguido'
+import AccionesEventoGoogle from '../components/AccionesEventoGoogle'
 import TarjetaGoogle from '../components/TarjetaGoogle'
-import { useSeguidosGoogle } from '../hooks/useSeguidosGoogle'
+import TarjetaTarea from '../components/TarjetaTarea'
+import { usePendientesGoogle } from '../hooks/usePendientesGoogle'
 import { useSeguimientoGoogle } from '../hooks/useSeguimientoGoogle'
 import { useTasks } from '../hooks/useTasks'
 import { camposCompletada, camposJustificada, camposPendiente, dividirChecklist } from '../lib/checklist'
 import { formatearDiaLargo, hoyEnLima } from '../lib/fechas'
-import { seguidosDeHoy } from '../lib/seguimiento'
+import { eventosDeHoy, rangoPendientesGoogle } from '../lib/seguimiento'
 
 function Seccion({ titulo, color = '', children }) {
   return (
@@ -31,13 +31,11 @@ export default function Hoy() {
   const seguimiento = useSeguimientoGoogle()
 
   const hoy = hoyEnLima()
-  const lista = dividirChecklist(tareas, hoy, cerradas)
-  const vencidas = lista.vencidas
-  // Los eventos de Google que se siguen van en las mismas listas, primero (todo el día y luego por hora).
-  const seguidos = useSeguidosGoogle(seguimiento, { desde: hoy, hasta: hoy })
-  const deGoogle = seguidosDeHoy(seguidos.seguidos, hoy)
-  const hoyPendientes = [...deGoogle.pendientes, ...lista.hoyPendientes]
-  const hechas = [...deGoogle.hechas, ...lista.hechas]
+  const { vencidas, hoyPendientes, hechas } = dividirChecklist(tareas, hoy, cerradas)
+  // Los eventos de Google de hoy van aparte, debajo de tus pendientes, con su propio contador.
+  // Mismo rango que Inicio y Pendientes: los tres comparten una sola petición a Google.
+  const google = usePendientesGoogle(seguimiento, rangoPendientesGoogle(hoy))
+  const eventos = eventosDeHoy(google.eventos, hoy)
 
   async function cerrar(tarea, campos) {
     await cambiar(tarea.id, campos)
@@ -45,9 +43,6 @@ export default function Hoy() {
   }
 
   function tarjeta(t) {
-    if (t.origen === 'google') {
-      return <TarjetaGoogle key={t.id} seguido={t} acciones={<AccionesSeguido seguido={t} seguimiento={seguimiento} />} />
-    }
     return (
       <TarjetaTarea
         key={t.id}
@@ -64,8 +59,9 @@ export default function Hoy() {
     )
   }
 
-  const cargandoTodo = cargando || seguidos.cargando
-  const nadaPendiente = !cargandoTodo && !error && vencidas.length === 0 && hoyPendientes.length === 0
+  const cargandoTodo = cargando || google.cargando
+  const nadaPendiente =
+    !cargandoTodo && !error && vencidas.length === 0 && hoyPendientes.length === 0 && eventos.pendientes.length === 0
 
   return (
     <>
@@ -73,9 +69,9 @@ export default function Hoy() {
       <p className="text-gray-600 capitalize dark:text-gray-400">{formatearDiaLargo(hoy)}</p>
 
       {cargandoTodo && <p className="mt-4 text-gray-600 dark:text-gray-400">Cargando…</p>}
-      {(seguimiento.error || seguidos.errorGoogle) && (
+      {(seguimiento.error || google.errorGoogle) && (
         <p role="status" className="mt-4 text-sm text-amber-800 dark:text-amber-300">
-          No se pudieron cargar tus eventos de Google seguidos. Lo demás se ve normal.
+          No se pudieron cargar tus eventos de Google. Lo demás se ve normal.
         </p>
       )}
       {error && (
@@ -92,6 +88,18 @@ export default function Hoy() {
 
       {hoyPendientes.length > 0 && (
         <Seccion titulo={`Para hoy (${hoyPendientes.length})`}>{hoyPendientes.map(tarjeta)}</Seccion>
+      )}
+
+      {eventos.total > 0 && (
+        <Seccion titulo={`Eventos de hoy · ${eventos.hechas} de ${eventos.total}`}>
+          {eventos.eventos.map((e) => (
+            <TarjetaGoogle
+              key={e.id}
+              evento={e}
+              acciones={<AccionesEventoGoogle evento={e} seguimiento={seguimiento} />}
+            />
+          ))}
+        </Seccion>
       )}
 
       {nadaPendiente && (

@@ -12,7 +12,9 @@ const VIGENCIA = 5 * 60_000
 // se responde sin llamar a Google.
 //   entrada: { desde, hasta, estado, eventos, truncado, pedidoEn }
 let cache = { userId: null, entradas: [] }
-const pendientes = new Map() // llamadas en curso, para no duplicarlas
+// Llamadas en curso: { userId, desde, hasta, promesa }. Si se pide un rango contenido en uno que ya viaja, se espera
+// esa misma llamada (así Inicio, Hoy y el calendario no piden lo mismo dos veces a la vez).
+let pendientes = []
 
 const SIN_DATOS = { estado: null, eventos: [], truncado: false }
 
@@ -31,34 +33,37 @@ function guardarEnCache(userId, entrada) {
 // Olvida todo lo pedido. Se llama al tocar "Actualizar" y al desconectar Google.
 export function invalidarEventosGoogle() {
   cache = { userId: null, entradas: [] }
-  pendientes.clear()
+  pendientes = []
 }
 
 // Pide el rango a la Edge Function (o se une a la llamada que ya está en curso) y lo guarda.
 function pedir(userId, desde, hasta) {
-  const clave = `${userId}|${desde}|${hasta}`
-  if (!pendientes.has(clave)) {
-    const instantes = rangoAInstantes({ desde, hasta })
-    const promesa = obtenerEventosGoogle(instantes.desde, instantes.hasta)
-      .then((r) => {
-        const ok = r.estado === 'ok'
-        const entrada = {
-          // Si Google no está disponible (no conectado, reconectar…) no depende del rango:
-          // la entrada vale para cualquier rango y no se insiste en cada cambio de semana.
-          desde: ok ? desde : '0000-01-01',
-          hasta: ok ? hasta : '9999-12-31',
-          estado: r.estado,
-          eventos: ok ? googleAEventos(r.eventos) : [],
-          truncado: r.truncado,
-          pedidoEn: Date.now(),
-        }
-        guardarEnCache(userId, entrada)
-        return entrada
-      })
-      .finally(() => pendientes.delete(clave))
-    pendientes.set(clave, promesa)
-  }
-  return pendientes.get(clave)
+  const enCurso = pendientes.find((p) => p.userId === userId && p.desde <= desde && p.hasta >= hasta)
+  if (enCurso) return enCurso.promesa
+
+  const instantes = rangoAInstantes({ desde, hasta })
+  const registro = { userId, desde, hasta, promesa: null }
+  registro.promesa = obtenerEventosGoogle(instantes.desde, instantes.hasta)
+    .then((r) => {
+      const ok = r.estado === 'ok'
+      const entrada = {
+        // Si Google no está disponible (no conectado, reconectar…) no depende del rango:
+        // la entrada vale para cualquier rango y no se insiste en cada cambio de semana.
+        desde: ok ? desde : '0000-01-01',
+        hasta: ok ? hasta : '9999-12-31',
+        estado: r.estado,
+        eventos: ok ? googleAEventos(r.eventos) : [],
+        truncado: r.truncado,
+        pedidoEn: Date.now(),
+      }
+      guardarEnCache(userId, entrada)
+      return entrada
+    })
+    .finally(() => {
+      pendientes = pendientes.filter((p) => p !== registro)
+    })
+  pendientes.push(registro)
+  return registro.promesa
 }
 
 // Eventos de Google Calendar para el rango de días visible en el calendario.

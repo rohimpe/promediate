@@ -3,7 +3,7 @@ import { useState } from 'react'
 // Botones de una tarjeta del checklist: Completar / Justificar / Deshacer.
 //   onCompletar(), onJustificar(motivo), onDeshacer(): funciones async de la página;
 //   si fallan lanzan un error y aquí mostramos el aviso.
-//   textoCompletar: texto del botón verde (los eventos de Google seguidos usan "✓ Fui").
+//   textoCompletar: texto del botón verde (los eventos de Google usan "✓ Fui").
 export default function AccionesChecklist({
   tarea,
   onCompletar,

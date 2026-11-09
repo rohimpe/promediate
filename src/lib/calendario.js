@@ -31,7 +31,7 @@ import { HORA_ENTREGA_POR_DEFECTO } from './tipos'
 //   serieId     id de la serie repetitiva o null
 //   lugar       texto o null
 //   enlace      dirección https de Google Calendar o null
-//   seguido     true si el usuario lo sigue (ver seguimiento.js); entonces `estado` es el de su seguimiento
+//   enPendientes true si entra a Hoy y Pendientes (ver seguimiento.js); entonces `estado` es el de sus pendientes
 // ---------------------------------------------------------------------
 
 // Color fijo de las actividades (las entregas usan el color de su curso).
