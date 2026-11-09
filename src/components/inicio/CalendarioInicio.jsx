@@ -3,7 +3,7 @@ import CalendarioConGoogle from '../calendario/CalendarioConGoogle'
 
 // Calendario compacto de Inicio: semana en pantallas anchas y un solo día en celular,
 // siempre con Anterior / Hoy / Siguiente. Reutiliza el calendario con los datos ya cargados.
-export default function CalendarioInicio({ tareas, cambiar, crear, sincronizar, seguimiento }) {
+export default function CalendarioInicio({ tareas, cambiar, crear, sincronizar, borrar, seguimiento }) {
   const ancha = useMediaQuery('(min-width: 640px)') // mismo punto que usa CalendarView
 
   return (
@@ -18,6 +18,7 @@ export default function CalendarioInicio({ tareas, cambiar, crear, sincronizar, 
         cambiar={cambiar}
         crear={crear}
         sincronizar={sincronizar}
+        borrar={borrar}
         seguimiento={seguimiento}
         vistas={[ancha ? 'semana' : 'dia']}
         alturaMaxima={480}

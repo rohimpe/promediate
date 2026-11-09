@@ -1,3 +1,4 @@
+import { COLOR_GOOGLE } from './calendario'
 import { fechaEnLima, horaEnLima, sumarDias } from './fechas'
 
 // ---------------------------------------------------------------------
@@ -16,7 +17,8 @@ import { fechaEnLima, horaEnLima, sumarDias } from './fechas'
 //   id, origen: 'google', tipo: 'evento', googleId, serieId, titulo,
 //   inicio (Date), fin (Date | null), todoElDia,
 //   estado ('pendiente' | 'completada' | 'justificada'), justificacion,
-//   guardado      true si tiene fila en la base de datos (false = pendiente virtual)
+//   color         el de su colorId en Google (las filas guardadas lo toman del evento si Google aún lo devuelve)
+//   guardado     true si tiene fila en la base de datos (false = pendiente virtual)
 //   soloGuardado  true si se muestra solo por su resumen guardado (Google no está disponible o ya
 //                 no devuelve el evento): la pantalla le pone la nota "(guardado)"
 // Es compatible con <AccionesChecklist> (usa id, estado y justificacion).
@@ -75,7 +77,7 @@ export function conEstadoDePendiente(evento, reglas) {
   return { ...evento, enPendientes: true, estado: fila?.estado ?? 'pendiente' }
 }
 
-function filaAItem(fila) {
+function filaAItem(fila, color) {
   return {
     id: `google:${fila.google_event_id}`,
     origen: 'google',
@@ -88,6 +90,7 @@ function filaAItem(fila) {
     todoElDia: fila.todo_el_dia,
     estado: fila.estado,
     justificacion: fila.justificacion,
+    color,
     guardado: true,
     soloGuardado: false,
   }
@@ -107,6 +110,7 @@ function eventoAItem(evento) {
     todoElDia: evento.todoElDia,
     estado: 'pendiente',
     justificacion: null,
+    color: evento.color,
     guardado: false,
     soloGuardado: false,
   }
@@ -125,10 +129,10 @@ function eventoAItem(evento) {
 // con ocurrencias ya marcadas muestra cada una una sola vez: las marcadas desde su fila y las demás, virtuales.
 // Si Google no está disponible, `eventos` llega vacío y solo se ven las filas.
 export function combinarEventosGoogle(filas, reglas, eventos, { estadoGoogle = null, truncado = false, rango = null } = {}) {
-  const vivos = new Set(eventos.map((e) => e.googleId))
+  const vivos = new Map(eventos.map((e) => [e.googleId, e]))
 
   const items = filas.map((fila) => {
-    const item = filaAItem(fila)
+    const item = filaAItem(fila, vivos.get(fila.google_event_id)?.color ?? COLOR_GOOGLE)
     const dia = fechaEnLima(item.inicio)
     const enRango = !!rango && dia >= rango.desde && dia <= rango.hasta
     item.soloGuardado =

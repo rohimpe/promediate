@@ -35,7 +35,8 @@ export default function TarjetaHoy({ tareas, eventosGoogle, seguimiento, cargand
       return (
         <li key={f.id} className={ITEM}>
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
+            {/* Franja con el color del evento en Google */}
+            <div className="min-w-0 border-l-4 pl-2" style={{ borderLeftColor: e.color }}>
               <p className="flex items-start gap-1.5 font-medium">
                 <IconoFila fila={f} className="mt-1 size-3.5 text-gray-500 dark:text-gray-400" />
                 <span className="min-w-0 break-words">{e.titulo}</span>

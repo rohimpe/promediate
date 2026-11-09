@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { camposCompletada, camposJustificada, camposPendiente } from '../../lib/checklist'
 import { fechaEnLima, formatearDiaLargo, formatearFechaHora, horaEnLima } from '../../lib/fechas'
@@ -30,14 +30,31 @@ function textoHorario(evento) {
 //   cambiar:  (id, campos) => Promise, el `cambiar` de useTasks
 //   sincronizar: (id, accion) => Promise, el `sincronizar` de useTasks ("Reintentar" si no se pudo añadir a Google)
 //   seguimiento: lo que devuelve useSeguimientoGoogle(); sin él, los eventos de Google son de solo lectura
+//   onBorrar: (tarea) => Promise; si se pasa, los pendientes de la app llevan "Borrar" (lanza error si no se pudo).
+//             Los eventos de Google que no creó la app nunca lo llevan: se quitan de tus pendientes.
 //   onCerrar: se llama al cerrar por cualquier vía (botón, Esc o clic afuera)
-export default function PanelEvento({ evento, tarea, choques = [], cambiar, sincronizar, seguimiento, onCerrar }) {
+export default function PanelEvento({ evento, tarea, choques = [], cambiar, sincronizar, seguimiento, onBorrar, onCerrar }) {
   const dialogRef = useRef(null)
+  const [borrando, setBorrando] = useState(false)
+  const [errorBorrar, setErrorBorrar] = useState('')
 
   useEffect(() => {
     const dialog = dialogRef.current
     if (dialog && !dialog.open) dialog.showModal()
   }, [])
+
+  async function borrar() {
+    const enGoogle = tarea.google_event_id ? ' También se eliminará de Google Calendar.' : ''
+    if (!window.confirm(`¿Borrar "${tarea.titulo}"?${enGoogle}`)) return
+    setBorrando(true)
+    setErrorBorrar('')
+    try {
+      await onBorrar(tarea) // si sale bien, el pendiente desaparece del calendario y el panel se cierra
+    } catch {
+      setErrorBorrar('No se pudo borrar el pendiente. Inténtalo de nuevo.')
+      setBorrando(false)
+    }
+  }
 
   return (
     <dialog
@@ -63,12 +80,29 @@ export default function PanelEvento({ evento, tarea, choques = [], cambiar, sinc
                     onJustificar={(motivo) => cambiar(tarea.id, camposJustificada(motivo))}
                     onDeshacer={() => cambiar(tarea.id, camposPendiente())}
                   />
-                  <Link
-                    to={`/tareas/${tarea.id}/editar`}
-                    className="inline-block rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
-                  >
-                    Editar
-                  </Link>
+                  <div className="flex gap-2">
+                    <Link
+                      to={`/tareas/${tarea.id}/editar`}
+                      className="inline-block rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+                    >
+                      Editar
+                    </Link>
+                    {onBorrar && (
+                      <button
+                        type="button"
+                        onClick={borrar}
+                        disabled={borrando}
+                        className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                      >
+                        {borrando ? 'Borrando…' : 'Borrar'}
+                      </button>
+                    )}
+                  </div>
+                  {errorBorrar && (
+                    <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                      {errorBorrar}
+                    </p>
+                  )}
                 </div>
               }
             />

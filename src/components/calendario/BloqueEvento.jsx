@@ -14,7 +14,7 @@ export function IconoGoogle({ className = 'size-3' }) {
 
 // Un evento dibujado como botón. Se ve distinto según tipo y estado:
 //   actividad  -> bloque con franja de color a la izquierda
-//   evento     -> como la actividad, en el color de Google y con un calendarito (solo lectura)
+//   evento     -> como la actividad, en su color de Google (colorId) y con un calendarito
 //   entrega    -> marcador con borde de color (y ⚑) en su hora límite
 //   completada -> ✓ y texto tachado   · justificada -> gris con etiqueta
 //   vencida    -> borde rojo           · pendiente  -> normal
@@ -53,7 +53,7 @@ export default function BloqueEvento({ evento, detalle = false, onClick, classNa
         evento.lugar ? ` · ${evento.lugar}` : ''
       }`}
       style={{ ...apariencia, ...style }}
-      className={`block overflow-hidden rounded-md px-1.5 py-0.5 text-left text-xs leading-tight [--fondo-bloque:#fff] dark:[--fondo-bloque:#030712] ${
+      className={`block overflow-hidden rounded-md px-1.5 py-0.5 text-left text-xs leading-tight text-gray-900 [--fondo-bloque:#fff] dark:text-gray-100 dark:[--fondo-bloque:#030712] ${
         estado === 'vencida' ? 'ring-2 ring-red-500' : ''
       } ${hecha || estado === 'justificada' ? 'opacity-70' : ''} ${className}`}
     >

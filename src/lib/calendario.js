@@ -21,7 +21,7 @@ import { HORA_ENTREGA_POR_DEFECTO } from './tipos'
 //   fin         Date
 //   todoElDia   true si no tiene hora (se muestra en la franja de arriba)
 //   tipo        'entrega' | 'actividad' | 'evento' (los de Google)
-//   color       '#rrggbb'
+//   color       '#rrggbb' (en los de Google, el de su colorId: ver colorGoogle)
 //   estado      'pendiente' | 'completada' | 'justificada' | 'vencida'
 //   origen      'app' | 'google'
 //   curso       nombre del curso o null (solo informativo)
@@ -36,8 +36,26 @@ import { HORA_ENTREGA_POR_DEFECTO } from './tipos'
 
 // Color fijo de las actividades (las entregas usan el color de su curso).
 export const COLOR_ACTIVIDAD = '#14b8a6'
-// Color fijo de los eventos de Google Calendar: un gris azulado que no está entre los de los cursos.
-export const COLOR_GOOGLE = '#64748b'
+// Colores de los eventos de Google Calendar: los mismos que muestra Google para cada `colorId` ('1'…'11').
+// Un evento sin colorId usa el color del calendario: el azul por defecto de Google (COLOR_GOOGLE).
+export const COLOR_GOOGLE = '#039be5'
+const COLORES_GOOGLE = {
+  1: '#7986cb',
+  2: '#33b679',
+  3: '#8e24aa',
+  4: '#e67c73',
+  5: '#f6bf26',
+  6: '#f4511e',
+  7: '#039be5',
+  8: '#616161',
+  9: '#3f51b5',
+  10: '#0b8043',
+  11: '#d50000',
+}
+
+export function colorGoogle(colorId) {
+  return COLORES_GOOGLE[colorId] ?? COLOR_GOOGLE
+}
 // Entrega sin curso: el índigo de la app.
 export const COLOR_SIN_CURSO = '#6366f1'
 // Color de lo justificado (se ve apagado).
@@ -106,7 +124,7 @@ export function googleAEventos(lista) {
       titulo: g.titulo,
       todoElDia: g.todoElDia,
       tipo: 'evento',
-      color: COLOR_GOOGLE,
+      color: colorGoogle(g.colorId),
       estado: 'pendiente',
       origen: 'google',
       curso: null,

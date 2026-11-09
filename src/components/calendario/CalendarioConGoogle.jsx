@@ -68,7 +68,8 @@ function AvisoGoogle({ estado, error, truncado }) {
 // (solo lectura). Es lo que usan la página Calendario y el calendario compacto del Inicio.
 // Maneja el interruptor «Mostrar Google Calendar», los avisos, el panel de detalles y el modal para crear.
 //
-//   tareas, cambiar, crear, sincronizar:  los de useTasks (sincronizar = "Reintentar" con Google en el panel)
+//   tareas, cambiar, crear, sincronizar, borrar:  los de useTasks (sincronizar = "Reintentar" con Google en el panel;
+//                 borrar = botón "Borrar" del panel, solo para los pendientes de la app)
 //   seguimiento:  el de useSeguimientoGoogle (la página lo crea una vez y lo comparte con Hoy, etc.).
 //                 Los eventos de Google que entran a pendientes muestran su estado y se pueden marcar en el panel.
 //   El resto de las propiedades (vistas, vistaInicial, alturaMaxima…) van directo a <CalendarView>.
@@ -76,12 +77,32 @@ function AvisoGoogle({ estado, error, truncado }) {
 // Sin duplicados: un pendiente creado en Google por la app (Parte C) aparece una sola vez, como pendiente. La función
 // google-calendar-events ya descarta esos eventos; aquí se descartan también por su id (tasks.google_event_id),
 // por si alguno llega igual (p. ej. de la caché pedida justo antes de crearlo).
-export default function CalendarioConGoogle({ tareas, cambiar, crear, sincronizar, seguimiento, ...propsCalendario }) {
+export default function CalendarioConGoogle({
+  tareas,
+  cambiar,
+  crear,
+  sincronizar,
+  borrar,
+  seguimiento,
+  ...propsCalendario
+}) {
   const [mostrar, setMostrar] = useMostrarGoogle()
   const [rango, setRango] = useState(null) // días visibles, lo informa <CalendarView>
   const google = useGoogleEventos(rango, mostrar)
   const [seleccionado, setSeleccionado] = useState(null) // id del evento abierto
   const [nuevo, setNuevo] = useState(null) // valores iniciales del modal "Nuevo pendiente" (null = cerrado)
+  const [avisoBorrar, setAvisoBorrar] = useState('') // se borró, pero el evento pudo quedar en Google
+
+  // useTasks.borrar borra antes el evento de Google (si lo tenía) y luego la fila; si Google falla, borra igual.
+  // Al quitarse de `tareas`, el pendiente desaparece del calendario (y de Hoy, Pendientes e Inicio) sin recargar.
+  async function borrarPendiente(tarea) {
+    setAvisoBorrar('')
+    const { eventoQuedo } = await borrar(tarea.id)
+    setSeleccionado(null)
+    if (eventoQuedo) {
+      setAvisoBorrar(`Se borró "${tarea.titulo}", pero su evento pudo quedar en Google Calendar. Puedes borrarlo allí.`)
+    }
+  }
 
   const eventosApp = useMemo(() => tareasAEventos(tareas), [tareas])
   const idsCopiasEnGoogle = useMemo(() => new Set(tareas.map((t) => t.google_event_id).filter(Boolean)), [tareas])
@@ -140,6 +161,20 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, sincroniza
         </div>
       )}
 
+      {avisoBorrar && (
+        <div role="status" className={`mb-3 flex items-start justify-between gap-2 ${AVISO_AMBAR}`}>
+          <p>{avisoBorrar}</p>
+          <button
+            type="button"
+            onClick={() => setAvisoBorrar('')}
+            aria-label="Cerrar aviso"
+            className="shrink-0 rounded px-1 leading-none hover:bg-amber-100 dark:hover:bg-amber-900"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <CalendarView
         {...propsCalendario}
         eventos={eventos}
@@ -157,6 +192,7 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, sincroniza
           cambiar={cambiar}
           sincronizar={sincronizar}
           seguimiento={seguimiento}
+          onBorrar={borrar ? borrarPendiente : undefined}
           onCerrar={() => setSeleccionado(null)}
         />
       )}

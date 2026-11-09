@@ -13,7 +13,7 @@ export function NotaGuardado() {
 }
 
 // Tarjeta de un evento de Google que es pendiente, con el mismo aspecto que <TarjetaTarea>: ícono de Google en lugar de
-// la etiqueta de prioridad y, al marcarlo, la etiqueta de su estado.
+// la etiqueta de prioridad, una franja a la izquierda con su color de Google y, al marcarlo, la etiqueta de su estado.
 //   evento: un item de lib/seguimiento.js
 //   acciones: botones que muestra cada página debajo de la tarjeta
 export default function TarjetaGoogle({ evento, acciones }) {
@@ -22,7 +22,8 @@ export default function TarjetaGoogle({ evento, acciones }) {
 
   return (
     <li
-      className={`rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 ${
+      style={{ borderLeftColor: evento.color }}
+      className={`rounded-xl border border-l-4 border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 ${
         pendiente ? '' : 'opacity-70'
       }`}
     >

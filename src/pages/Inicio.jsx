@@ -19,7 +19,7 @@ import { rangoPendientesGoogle } from '../lib/seguimiento'
 // Pantalla grande (lg): calendario a la izquierda y las tres tarjetas apiladas a la derecha.
 export default function Inicio() {
   const { user } = useAuth()
-  const { tareas, cargando, error, cambiar, crear, sincronizar } = useTasks()
+  const { tareas, cargando, error, cambiar, crear, sincronizar, borrar } = useTasks()
   const cursos = useCursosConNotas()
   const perfil = useNombrePerfil(user?.id)
   const seguimiento = useSeguimientoGoogle() // lo guardado de Google (marcados, ocultos): lo comparten la tarjeta Hoy y el calendario
@@ -61,6 +61,7 @@ export default function Inicio() {
             cambiar={cambiar}
             crear={crear}
             sincronizar={sincronizar}
+            borrar={borrar}
             seguimiento={seguimiento}
           />
         </div>

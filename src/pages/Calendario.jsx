@@ -5,7 +5,7 @@ import { useTasks } from '../hooks/useTasks'
 // Página "Calendario": le pasa los pendientes al calendario, que además mezcla los eventos de Google
 // (y permite seguirlos para marcarlos).
 export default function Calendario() {
-  const { tareas, cargando, error, cambiar, crear, sincronizar } = useTasks()
+  const { tareas, cargando, error, cambiar, crear, sincronizar, borrar } = useTasks()
   const seguimiento = useSeguimientoGoogle()
 
   return (
@@ -24,6 +24,7 @@ export default function Calendario() {
         cambiar={cambiar}
         crear={crear}
         sincronizar={sincronizar}
+        borrar={borrar}
         seguimiento={seguimiento}
       />
     </>

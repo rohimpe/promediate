@@ -3,7 +3,8 @@
 //
 // Respuesta (siempre 200 salvo error): { estado, eventos, truncado }
 //   estado: 'ok' | 'no_conectado' | 'reconectar' | 'permisos_incompletos'
-//   eventos: [{ id, serieId, titulo, inicio, fin, todoElDia, lugar, enlace, origen: 'google' }]
+//   eventos: [{ id, serieId, titulo, colorId, inicio, fin, todoElDia, lugar, enlace, origen: 'google' }]
+//     - colorId: '1'…'11' (color que el usuario eligió en Google) o null
 //     - serieId: recurringEventId de Google (la serie a la que pertenece la ocurrencia) o null
 //     - con hora:       inicio y fin son instantes ISO con su offset original ("2026-11-10T09:00:00+01:00")
 //     - de todo el día: inicio y fin son fechas 'YYYY-MM-DD' y `fin` es EXCLUSIVO (así las manda Google:
@@ -30,13 +31,14 @@ const MAX_EVENTOS = 1000
 // Pedimos solo los campos que usamos (así la descripción, los asistentes completos y demás
 // datos personales ni siquiera salen de Google).
 const CAMPOS =
-  'nextPageToken,items(id,recurringEventId,status,summary,start,end,location,htmlLink,attendees(self,responseStatus),extendedProperties(private))'
+  'nextPageToken,items(id,recurringEventId,status,summary,colorId,start,end,location,htmlLink,attendees(self,responseStatus),extendedProperties(private))'
 
 interface EventoGoogle {
   id?: string
   recurringEventId?: string
   status?: string
   summary?: string
+  colorId?: string
   start?: { date?: string; dateTime?: string }
   end?: { date?: string; dateTime?: string }
   location?: string
@@ -79,6 +81,7 @@ function normalizar(e: EventoGoogle) {
     id: e.id as string,
     serieId: e.recurringEventId ?? null, // id de la serie repetitiva (null si el evento es suelto)
     titulo: e.summary?.trim() || 'Sin título',
+    colorId: e.colorId ?? null, // '1'…'11' si el usuario le puso color en Google; null = color del calendario
     inicio,
     fin,
     todoElDia,
