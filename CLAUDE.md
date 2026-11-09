@@ -109,7 +109,7 @@ Supabase Auth con correo y contraseña. Sin sesión, todo redirige a Login (`Pro
 - **Estados vacíos** con botón: "No tienes nada para hoy 🎉" → Nuevo pendiente · "No tienes entregas pendientes 🎉" → Agregar una entrega · "Agrega tu primer curso" → Promedios.
 - **Carga eficiente:** la página pide los datos una sola vez (`useTasks`, `useCursosConNotas`, `useNombrePerfil`) y las tarjetas no consultan por su cuenta. Las funciones que preparan los datos están en `src/lib/inicio.js`; las tarjetas, en `src/components/inicio/`.
 
-### 8. Conexión con Google (Fase 3, parte A) — hecha, pendiente de confirmar en local
+### 8. Conexión con Google (Fase 3, parte A) ✅
 Página **Conexiones** (`/conexiones`, en el menú) con una tarjeta de Google: *No conectado* → "Conectar Google"; *Conectado* (con el correo de Google) → "Desconectar" (con confirmación); estado `reconectar` → "Reconectar Google". Al volver de Google lee `?google=ok|error`, muestra el mensaje y limpia la URL. Aún **no** lee ni crea eventos de Calendar ni toca Drive.
 
 - **Flujo:** `google-connect` (con JWT del usuario) crea un `state` aleatorio ligado al `user_id` y devuelve la URL de Google → el navegador va a Google → Google vuelve a `google-callback` (sin JWT) → se valida el `state`, se cambia el `code` por tokens, se cifra el refresh token y se guarda → redirige a `APP_URL/conexiones?google=ok|error`.
@@ -169,7 +169,7 @@ Las 4 tablas principales tienen RLS activo con políticas por usuario (`user_id 
 - [x] **Fase 1** — terminada: publicada en Vercel, instalable como PWA y probada en celular (login/registro, pendientes, Hoy y resumen del día, promedios, calendario e Inicio).
 - [ ] **Fase 2:** recordatorios (canal por definir; ver sección 10)
 - [ ] **Fase 3:** Google Calendar y Google Drive
-  - [ ] **A:** conectar la cuenta de Google (sección 8; hecha, falta confirmar la prueba en local)
+  - [x] **A:** conectar la cuenta de Google (sección 8; hecha y probada)
   - [ ] **B:** leer y crear eventos en Google Calendar
   - [ ] **C:** archivos en Google Drive
   - [ ] **D:** por definir
