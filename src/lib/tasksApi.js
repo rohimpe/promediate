@@ -13,6 +13,17 @@ export async function listarTareas() {
   return data
 }
 
+// Actividades de un día ('YYYY-MM-DD'), para comprobar choques de horario.
+export async function listarActividadesDelDia(fecha) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('tipo', 'actividad')
+    .eq('fecha_actividad', fecha)
+  if (error) throw registrarError(error)
+  return data
+}
+
 export async function obtenerTarea(id) {
   const { data, error } = await supabase.from('tasks').select('*').eq('id', id).maybeSingle()
   if (error) throw registrarError(error)

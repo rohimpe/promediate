@@ -66,6 +66,13 @@ function pedir(userId, desde, hasta) {
   return registro.promesa
 }
 
+// Los eventos de un rango, sin hook: de la caché si ya están (o de la llamada en curso) y, si no, se piden.
+// Devuelve una promesa con { estado, eventos, truncado }. La usa quien necesita los eventos en un momento puntual
+// (p. ej. comprobar choques al guardar) sin repetir la petición que ya hicieron Inicio, Hoy o el calendario.
+export function cargarEventosGoogle(userId, desde, hasta) {
+  return Promise.resolve(buscarEnCache(userId, desde, hasta) ?? pedir(userId, desde, hasta))
+}
+
 // Eventos de Google Calendar para el rango de días visible en el calendario.
 //   rango:  { desde, hasta } ('YYYY-MM-DD' de Lima, ambos incluidos) o null si aún no se sabe
 //   activo: false para no llamar a Google (interruptor "Mostrar Google Calendar" apagado)
@@ -89,9 +96,8 @@ export function useGoogleEventos(rango, activo = true) {
   useEffect(() => {
     if (!clave) return
     // Si ya está en la caché se responde igual, solo que sin llamar a Google.
-    const guardada = buscarEnCache(userId, desde, hasta)
     let vigente = true // si el rango cambió mientras tanto, esta respuesta ya no interesa (igual queda en la caché)
-    ;(guardada ? Promise.resolve(guardada) : pedir(userId, desde, hasta))
+    cargarEventosGoogle(userId, desde, hasta)
       .then((entrada) => vigente && setResultado({ clave, entrada, fallo: false }))
       // Si falla se conservan los eventos anteriores y se avisa.
       .catch(() => vigente && setResultado((r) => ({ clave, entrada: r.entrada, fallo: true })))

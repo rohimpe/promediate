@@ -3,6 +3,7 @@ import { diasRestantes, estaVencida, prioridadActual } from '../lib/priority'
 import { NOMBRE_TIPO, recortarHora } from '../lib/tipos'
 import EtiquetaPrioridad from './EtiquetaPrioridad'
 import EtiquetaVencida from './EtiquetaVencida'
+import { IconoActividad, IconoEntrega } from './IconosTipo'
 
 const ESTADOS = {
   completada: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
@@ -10,7 +11,8 @@ const ESTADOS = {
 }
 
 // "acciones": botones o formularios que muestra cada página debajo de la tarjeta.
-export default function TarjetaTarea({ tarea, acciones }) {
+// "conIcono": ícono de entrega o de actividad antes del título (Hoy los lleva para distinguir las filas).
+export default function TarjetaTarea({ tarea, acciones, conIcono = false }) {
   const pendiente = tarea.estado === 'pendiente'
   const dias = diasRestantes(tarea)
   // Entrega: "18 oct, 14:30" · Actividad: "18 oct, 14:00–16:00"
@@ -31,7 +33,15 @@ export default function TarjetaTarea({ tarea, acciones }) {
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <h2 className={`font-semibold ${pendiente ? '' : 'line-through'}`}>{tarea.titulo}</h2>
+        <h2 className={`flex min-w-0 items-start gap-1.5 font-semibold ${pendiente ? '' : 'line-through'}`}>
+          {conIcono &&
+            (tarea.tipo === 'tarea' ? (
+              <IconoEntrega className="mt-1 size-3.5 text-gray-500 dark:text-gray-400" />
+            ) : (
+              <IconoActividad className="mt-1 size-3.5 text-gray-500 dark:text-gray-400" />
+            ))}
+          <span className="min-w-0 break-words">{tarea.titulo}</span>
+        </h2>
         <div className="flex shrink-0 gap-1.5">
           {estaVencida(tarea) && <EtiquetaVencida />}
           {pendiente ? (

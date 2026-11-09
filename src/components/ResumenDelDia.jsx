@@ -81,7 +81,7 @@ export default function ResumenDelDia() {
         <h2 id="resumen-titulo" className="text-xl font-bold">
           Resumen del día
         </h2>
-        <p className="text-sm text-gray-600 capitalize dark:text-gray-400">{formatearDiaLargo(hoy)}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400">{formatearDiaLargo(hoy)}</p>
 
         {vencidas.length > 0 && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-300">

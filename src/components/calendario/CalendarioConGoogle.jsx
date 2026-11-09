@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useGoogleEventos } from '../../hooks/useGoogleEventos'
 import { useMostrarGoogle } from '../../hooks/useMostrarGoogle'
 import { tareasAEventos } from '../../lib/calendario'
+import { buscarChoques, idsConChoque } from '../../lib/choques'
 import { conEstadoDePendiente } from '../../lib/seguimiento'
 import NuevoPendienteModal from '../NuevoPendienteModal'
 import { IconoGoogle } from './BloqueEvento'
@@ -84,11 +85,17 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimient
     () => google.eventos.map((e) => conEstadoDePendiente(e, seguimiento.reglas)),
     [google.eventos, seguimiento.reglas],
   )
-  const eventos = useMemo(() => [...eventosApp, ...eventosGoogle], [eventosApp, eventosGoogle])
+  // Las actividades y los eventos de Google con hora que se solapan con otro llevan `choque: true` (ícono de advertencia).
+  const eventos = useMemo(() => {
+    const todos = [...eventosApp, ...eventosGoogle]
+    const ids = idsConChoque(todos)
+    return ids.size === 0 ? todos : todos.map((e) => (ids.has(e.id) ? { ...e, choque: true } : e))
+  }, [eventosApp, eventosGoogle])
 
   // Se busca por id en cada render para que el panel refleje los cambios (completar, deshacer…).
   const evento = eventos.find((e) => e.id === seleccionado)
   const tarea = evento?.origen === 'app' ? tareas.find((t) => t.id === evento.id) : undefined
+  const choques = evento?.choque ? buscarChoques(evento, eventos, { excluirId: evento.id }) : []
 
   return (
     <>
@@ -135,6 +142,7 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimient
           key={evento.id}
           evento={evento}
           tarea={tarea}
+          choques={choques}
           cambiar={cambiar}
           seguimiento={seguimiento}
           onCerrar={() => setSeleccionado(null)}

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
+import { useComprobarChoques } from '../hooks/useComprobarChoques'
 import { useCourses } from '../hooks/useCourses'
 import { aInputDatetime, deInputDatetime } from '../lib/fechas'
 import { HORA_ENTREGA_POR_DEFECTO, recortarHora } from '../lib/tipos'
+import AdvertenciaChoques from './AdvertenciaChoques'
 import { Atajos, AtajosFecha } from './Atajos'
 import CampoSelect from './CampoSelect'
 import CampoTexto from './CampoTexto'
@@ -20,10 +22,13 @@ import SelectorTipo from './SelectorTipo'
 //   onGuardar(campos):  guarda en Supabase (quien usa el formulario decide cómo); si falla, lanza el error
 //   onGuardado:         se llama cuando onGuardar terminó bien (navegar, cerrar el modal…)
 //   onCancelar:         si se pasa, "Cancelar" es un botón que lo llama; si no, vuelve a Pendientes
+//                       Las actividades se comparan con el resto del horario antes de guardar: si se cruzan, se
+//                       muestra una advertencia no bloqueante (Guardar de todos modos / Cambiar hora).
 //   onEstado:           opcional, debe ser estable. Recibe { sucio, enviando } cada vez que cambian:
 //                       "sucio" = el usuario ya escribió un título o una descripción.
 export default function PendienteForm({ inicial, valoresIniciales, onGuardar, onGuardado, onCancelar, onEstado }) {
   const { cursos } = useCourses()
+  const comprobarChoques = useComprobarChoques()
   const v = valoresIniciales ?? {}
   const [titulo, setTitulo] = useState(inicial?.titulo ?? '')
   const [descripcion, setDescripcion] = useState(inicial?.descripcion ?? '')
@@ -40,6 +45,7 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
   const [horaFin, setHoraFin] = useState(recortarHora(inicial?.hora_fin) || v.horaFin || '')
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [choques, setChoques] = useState(null) // lo que se cruza con la actividad (null = sin advertencia)
 
   const esEntrega = tipo === 'tarea'
   const sucio = titulo.trim() !== '' || descripcion.trim() !== ''
@@ -57,6 +63,12 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
     onEstado?.({ sucio, enviando })
   }, [sucio, enviando, onEstado])
 
+  // Cambiar el día o la hora deja obsoleta la advertencia: se quita y se vuelve a comprobar al guardar.
+  const quitandoAviso = (setter) => (valor) => {
+    setChoques(null)
+    setter(valor)
+  }
+
   async function onSubmit(e) {
     e.preventDefault()
     setError('')
@@ -70,8 +82,22 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
         setError('La hora de fin debe ser posterior a la hora de inicio.')
         return
       }
+
+      // Las actividades se comparan con el resto del horario. Las entregas no (no ocupan tiempo).
+      setEnviando(true)
+      const encontrados = await comprobarChoques({ fecha: fechaActividad, horaInicio, horaFin, tarea: inicial })
+      if (!montado.current) return
+      if (encontrados.length > 0) {
+        setChoques(encontrados)
+        setEnviando(false)
+        return
+      }
     }
 
+    await guardar()
+  }
+
+  async function guardar() {
     setEnviando(true)
     try {
       // Los campos que no corresponden al tipo se guardan en null,
@@ -90,6 +116,7 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
     } catch (err) {
       // Todo lo escrito se conserva; solo mostramos el error de verdad (el de Supabase o de red).
       if (montado.current) {
+        setChoques(null)
         setError(err?.message ? `No se pudo guardar: ${err.message}` : 'No se pudo guardar. Inténtalo de nuevo.')
         setEnviando(false)
       }
@@ -100,12 +127,18 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
     onGuardado?.()
   }
 
+  function cambiarHora() {
+    setChoques(null)
+    // Espera a que el formulario vuelva a mostrar los botones y lleva el foco a la hora de inicio.
+    requestAnimationFrame(() => document.getElementById('hora-inicio-horas')?.focus())
+  }
+
   const clasesCancelar =
     'rounded-lg border border-gray-300 px-4 py-2.5 font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800'
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <SelectorTipo valor={tipo} onChange={setTipo} />
+      <SelectorTipo valor={tipo} onChange={quitandoAviso(setTipo)} />
 
       <CampoTexto
         id="titulo"
@@ -166,12 +199,12 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
             type="date"
             required
             value={fechaActividad}
-            onChange={(e) => setFechaActividad(e.target.value)}
+            onChange={(e) => quitandoAviso(setFechaActividad)(e.target.value)}
           />
-          <AtajosFecha onElegir={setFechaActividad} />
+          <AtajosFecha onElegir={quitandoAviso(setFechaActividad)} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <SelectorHora id="hora-inicio" label="Hora de inicio" valor={horaInicio} onChange={setHoraInicio} vacio />
-            <SelectorHora id="hora-fin" label="Hora de fin" valor={horaFin} onChange={setHoraFin} vacio />
+            <SelectorHora id="hora-inicio" label="Hora de inicio" valor={horaInicio} onChange={quitandoAviso(setHoraInicio)} vacio />
+            <SelectorHora id="hora-fin" label="Hora de fin" valor={horaFin} onChange={quitandoAviso(setHoraFin)} vacio />
           </div>
         </>
       )}
@@ -193,24 +226,28 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
         </p>
       )}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={enviando}
-          className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
-        >
-          {enviando ? 'Guardando…' : esEntrega ? 'Guardar entrega' : 'Guardar actividad'}
-        </button>
-        {onCancelar ? (
-          <button type="button" onClick={onCancelar} className={clasesCancelar}>
-            Cancelar
+      {choques ? (
+        <AdvertenciaChoques choques={choques} onGuardar={guardar} onCambiar={cambiarHora} ocupado={enviando} />
+      ) : (
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={enviando}
+            className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          >
+            {enviando ? 'Guardando…' : esEntrega ? 'Guardar entrega' : 'Guardar actividad'}
           </button>
-        ) : (
-          <Link to="/tareas" className={clasesCancelar}>
-            Cancelar
-          </Link>
-        )}
-      </div>
+          {onCancelar ? (
+            <button type="button" onClick={onCancelar} className={clasesCancelar}>
+              Cancelar
+            </button>
+          ) : (
+            <Link to="/tareas" className={clasesCancelar}>
+              Cancelar
+            </Link>
+          )}
+        </div>
+      )}
     </form>
   )
 }

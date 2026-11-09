@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { camposCompletada, camposJustificada, camposPendiente } from '../../lib/checklist'
 import { fechaEnLima, formatearDiaLargo, formatearFechaHora, horaEnLima } from '../../lib/fechas'
 import AccionesChecklist from '../AccionesChecklist'
+import { IconoAdvertencia, ListaChoques } from '../AdvertenciaChoques'
 import TarjetaTarea from '../TarjetaTarea'
 import { IconoGoogle } from './BloqueEvento'
 import PendienteGoogle from './PendienteGoogle'
@@ -25,10 +26,11 @@ function textoHorario(evento) {
 //             muestran las mismas acciones que en "Hoy": Completar, Justificar, Deshacer.
 //             Los eventos de Google (origen 'google') no tienen tarea: muestran sus detalles y, con
 //             `seguimiento`, los botones para marcarlos (Fui / Justificar) o quitarlos de tus pendientes.
+//   choques:  los elementos con hora que se solapan con este evento (vacío si no hay); se explican en un aviso
 //   cambiar:  (id, campos) => Promise, el `cambiar` de useTasks
 //   seguimiento: lo que devuelve useSeguimientoGoogle(); sin él, los eventos de Google son de solo lectura
 //   onCerrar: se llama al cerrar por cualquier vía (botón, Esc o clic afuera)
-export default function PanelEvento({ evento, tarea, cambiar, seguimiento, onCerrar }) {
+export default function PanelEvento({ evento, tarea, choques = [], cambiar, seguimiento, onCerrar }) {
   const dialogRef = useRef(null)
 
   useEffect(() => {
@@ -96,6 +98,19 @@ export default function PanelEvento({ evento, tarea, cambiar, seguimiento, onCer
               </div>
             )}
             {evento.origen === 'google' && seguimiento && <PendienteGoogle evento={evento} seguimiento={seguimiento} />}
+          </div>
+        )}
+
+        {choques.length > 0 && (
+          <div className="mt-3 space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            <p className="flex items-center gap-1.5 text-sm font-semibold">
+              <IconoAdvertencia />
+              Este horario se cruza con otro
+            </p>
+            <p className="text-sm">
+              El ícono de advertencia en el calendario marca los eventos que se solapan en el tiempo. Se cruza con:
+            </p>
+            <ListaChoques choques={choques} />
           </div>
         )}
 

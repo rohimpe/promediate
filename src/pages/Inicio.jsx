@@ -35,7 +35,7 @@ export default function Inicio() {
         <h1 className="text-2xl font-bold">
           Hola{!perfil.cargando && nombre ? `, ${nombre}` : ''} 👋
         </h1>
-        <p className="text-gray-600 capitalize dark:text-gray-400">{formatearDiaLargo(hoy)}</p>
+        <p className="text-gray-600 dark:text-gray-400">{formatearDiaLargo(hoy)}</p>
       </header>
 
       {/* En lg: calendario en la columna 1 (ocupa las 3 filas) y las tarjetas en la columna 2.

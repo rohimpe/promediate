@@ -1,5 +1,6 @@
 import { COLOR_JUSTIFICADA } from '../../lib/calendario'
 import { horaEnLima } from '../../lib/fechas'
+import { IconoAdvertencia } from '../AdvertenciaChoques'
 
 // Calendarito que distingue a los eventos de Google de los pendientes de la app.
 export function IconoGoogle({ className = 'size-3' }) {
@@ -17,6 +18,7 @@ export function IconoGoogle({ className = 'size-3' }) {
 //   entrega    -> marcador con borde de color (y ⚑) en su hora límite
 //   completada -> ✓ y texto tachado   · justificada -> gris con etiqueta
 //   vencida    -> borde rojo           · pendiente  -> normal
+//   choque     -> triángulo de advertencia: se solapa con otro evento (ver idsConChoque)
 //
 // "detalle": si hay alto suficiente, agrega una segunda línea con la hora.
 // La posición (absolute, top…) la decide quien lo usa, con className y style.
@@ -47,7 +49,7 @@ export default function BloqueEvento({ evento, detalle = false, onClick, classNa
     <button
       type="button"
       onClick={onClick}
-      title={`${evento.titulo}${hora ? ` · ${hora}` : ''}${evento.curso ? ` · ${evento.curso}` : ''}${
+      title={`${evento.choque ? '⚠ Se cruza con otro evento · ' : ''}${evento.titulo}${hora ? ` · ${hora}` : ''}${evento.curso ? ` · ${evento.curso}` : ''}${
         evento.lugar ? ` · ${evento.lugar}` : ''
       }`}
       style={{ ...apariencia, ...style }}
@@ -64,6 +66,9 @@ export default function BloqueEvento({ evento, detalle = false, onClick, classNa
           </span>
         )}
         <span className={`min-w-0 flex-1 truncate font-medium ${hecha ? 'line-through' : ''}`}>{evento.titulo}</span>
+        {evento.choque && (
+          <IconoAdvertencia className="size-3 text-amber-600 dark:text-amber-400" />
+        )}
         {estado === 'justificada' && (
           <span className="shrink-0 rounded bg-gray-200 px-1 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-200">
             Justificada

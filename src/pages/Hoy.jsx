@@ -6,8 +6,9 @@ import TarjetaTarea from '../components/TarjetaTarea'
 import { usePendientesGoogle } from '../hooks/usePendientesGoogle'
 import { useSeguimientoGoogle } from '../hooks/useSeguimientoGoogle'
 import { useTasks } from '../hooks/useTasks'
-import { camposCompletada, camposJustificada, camposPendiente, dividirChecklist } from '../lib/checklist'
+import { camposCompletada, camposJustificada, camposPendiente, dividirChecklist, unirListaHoy } from '../lib/checklist'
 import { formatearDiaLargo, hoyEnLima } from '../lib/fechas'
+import { resumenDeHoy } from '../lib/inicio'
 import { eventosDeHoy, rangoPendientesGoogle } from '../lib/seguimiento'
 
 function Seccion({ titulo, color = '', children }) {
@@ -22,6 +23,7 @@ function Seccion({ titulo, color = '', children }) {
 }
 
 // Página "Hoy": el checklist diario. Se calcula al abrir, según el día actual en Lima.
+// Entregas, actividades y eventos de Google van en una sola lista (ver unirListaHoy para el orden).
 export default function Hoy() {
   const { tareas, cargando, error, cambiar } = useTasks()
   // Ids que el usuario cerró en esta sesión: se quedan visibles en "Hechas" aunque
@@ -32,21 +34,39 @@ export default function Hoy() {
 
   const hoy = hoyEnLima()
   const { vencidas, hoyPendientes, hechas } = dividirChecklist(tareas, hoy, cerradas)
-  // Los eventos de Google de hoy van aparte, debajo de tus pendientes, con su propio contador.
   // Mismo rango que Inicio y Pendientes: los tres comparten una sola petición a Google.
   const google = usePendientesGoogle(seguimiento, rangoPendientesGoogle(hoy))
   const eventos = eventosDeHoy(google.eventos, hoy)
+
+  const paraHoy = unirListaHoy(hoyPendientes, eventos.pendientes)
+  const hechasHoy = unirListaHoy(
+    hechas,
+    eventos.eventos.filter((e) => e.estado !== 'pendiente'),
+  )
+  // "X de Y completados" cuenta todo lo de hoy: pendientes, actividades y eventos de Google.
+  const { hechas: nHechas, total } = resumenDeHoy(tareas, hoy, google.eventos)
 
   async function cerrar(tarea, campos) {
     await cambiar(tarea.id, campos)
     setCerradas((s) => new Set(s).add(tarea.id))
   }
 
-  function tarjeta(t) {
+  function tarjeta(fila) {
+    if (fila.origen === 'google') {
+      return (
+        <TarjetaGoogle
+          key={fila.id}
+          evento={fila.evento}
+          acciones={<AccionesEventoGoogle evento={fila.evento} seguimiento={seguimiento} />}
+        />
+      )
+    }
+    const t = fila.tarea
     return (
       <TarjetaTarea
         key={t.id}
         tarea={t}
+        conIcono
         acciones={
           <AccionesChecklist
             tarea={t}
@@ -60,13 +80,17 @@ export default function Hoy() {
   }
 
   const cargandoTodo = cargando || google.cargando
-  const nadaPendiente =
-    !cargandoTodo && !error && vencidas.length === 0 && hoyPendientes.length === 0 && eventos.pendientes.length === 0
+  const nadaPendiente = !cargandoTodo && !error && vencidas.length === 0 && paraHoy.length === 0
 
   return (
     <>
       <h1 className="text-2xl font-bold">Hoy</h1>
-      <p className="text-gray-600 capitalize dark:text-gray-400">{formatearDiaLargo(hoy)}</p>
+      <p className="text-gray-600 dark:text-gray-400">{formatearDiaLargo(hoy)}</p>
+      {!cargandoTodo && !error && total > 0 && (
+        <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+          {nHechas} de {total} completados
+        </p>
+      )}
 
       {cargandoTodo && <p className="mt-4 text-gray-600 dark:text-gray-400">Cargando…</p>}
       {(seguimiento.error || google.errorGoogle) && (
@@ -82,25 +106,11 @@ export default function Hoy() {
 
       {vencidas.length > 0 && (
         <Seccion titulo={`Vencidas (${vencidas.length})`} color="text-red-700 dark:text-red-400">
-          {vencidas.map(tarjeta)}
+          {vencidas.map((t) => tarjeta({ id: t.id, origen: 'app', tarea: t }))}
         </Seccion>
       )}
 
-      {hoyPendientes.length > 0 && (
-        <Seccion titulo={`Para hoy (${hoyPendientes.length})`}>{hoyPendientes.map(tarjeta)}</Seccion>
-      )}
-
-      {eventos.total > 0 && (
-        <Seccion titulo={`Eventos de hoy · ${eventos.hechas} de ${eventos.total}`}>
-          {eventos.eventos.map((e) => (
-            <TarjetaGoogle
-              key={e.id}
-              evento={e}
-              acciones={<AccionesEventoGoogle evento={e} seguimiento={seguimiento} />}
-            />
-          ))}
-        </Seccion>
-      )}
+      {paraHoy.length > 0 && <Seccion titulo={`Para hoy (${paraHoy.length})`}>{paraHoy.map(tarjeta)}</Seccion>}
 
       {nadaPendiente && (
         <p className="mt-6 rounded-xl border border-gray-200 p-4 text-center text-gray-600 dark:border-gray-800 dark:text-gray-400">
@@ -108,7 +118,7 @@ export default function Hoy() {
         </p>
       )}
 
-      {hechas.length > 0 && <Seccion titulo={`Hechas (${hechas.length})`}>{hechas.map(tarjeta)}</Seccion>}
+      {hechasHoy.length > 0 && <Seccion titulo={`Hechas (${hechasHoy.length})`}>{hechasHoy.map(tarjeta)}</Seccion>}
     </>
   )
 }
