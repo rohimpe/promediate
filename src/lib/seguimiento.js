@@ -1,4 +1,4 @@
-import { COLOR_GOOGLE } from './calendario'
+import { COLOR_GOOGLE, colorGoogle } from './calendario'
 import { fechaEnLima, horaEnLima, sumarDias } from './fechas'
 
 // ---------------------------------------------------------------------
@@ -17,7 +17,8 @@ import { fechaEnLima, horaEnLima, sumarDias } from './fechas'
 //   id, origen: 'google', tipo: 'evento', googleId, serieId, titulo,
 //   inicio (Date), fin (Date | null), todoElDia,
 //   estado ('pendiente' | 'completada' | 'justificada'), justificacion,
-//   color         el de su colorId en Google (las filas guardadas lo toman del evento si Google aún lo devuelve)
+//   color         el elegido en la app (por ocurrencia o por serie, ver colorDeEvento), si no el de su colorId en
+//                 Google (las filas guardadas lo toman del evento si Google aún lo devuelve) y si no el azul por defecto
 //   guardado     true si tiene fila en la base de datos (false = pendiente virtual)
 //   soloGuardado  true si se muestra solo por su resumen guardado (Google no está disponible o ya
 //                 no devuelve el evento): la pantalla le pone la nota "(guardado)"
@@ -51,13 +52,30 @@ export function resumenDeEvento(x) {
 //   filas:   google_seguimiento (eventos marcados)
 //   ocultos: google_ocultos
 //   incluirTodoElDia: profiles.google_incluir_todo_el_dia
-export function armarReglas(filas, ocultos, incluirTodoElDia) {
+//   colores: google_colores (colores propios de eventos y series)
+export function armarReglas(filas, ocultos, incluirTodoElDia, colores = []) {
   return {
     porId: new Map(filas.map((f) => [f.google_event_id, f])),
     ocultosEventos: new Set(ocultos.filter((o) => o.google_event_id).map((o) => o.google_event_id)),
     ocultosSeries: new Set(ocultos.filter((o) => o.serie_id).map((o) => o.serie_id)),
     incluirTodoElDia: !!incluirTodoElDia,
+    coloresEventos: new Map(colores.filter((c) => c.google_event_id).map((c) => [c.google_event_id, c.color_id])),
+    coloresSeries: new Map(colores.filter((c) => c.serie_id).map((c) => [c.serie_id, c.color_id])),
   }
+}
+
+// Color propio (de la app) de un evento de Google: primero el de su ocurrencia y luego el de su serie.
+// Devuelve el colorId ('1'…'11') o null si el usuario no eligió ninguno.
+export function colorIdPropio(x, reglas) {
+  return reglas.coloresEventos.get(x.googleId) ?? (x.serieId ? reglas.coloresSeries.get(x.serieId) : null) ?? null
+}
+
+// Color con el que se pinta un evento de Google (del calendario o un item de Hoy/Pendientes). Prioridad:
+//   1. el de la app por ocurrencia (google_event_id)   2. el de la app por serie (serie_id)
+//   3. el colorId de Google (ya viene en `x.color`)    4. el azul por defecto (también en `x.color`)
+export function colorDeEvento(x, reglas) {
+  const colorId = colorIdPropio(x, reglas)
+  return colorId ? colorGoogle(colorId) : x.color
 }
 
 // ¿Este evento de Google (del calendario o de la función) entra a pendientes?
@@ -133,6 +151,7 @@ export function combinarEventosGoogle(filas, reglas, eventos, { estadoGoogle = n
 
   const items = filas.map((fila) => {
     const item = filaAItem(fila, vivos.get(fila.google_event_id)?.color ?? COLOR_GOOGLE)
+    item.color = colorDeEvento(item, reglas)
     const dia = fechaEnLima(item.inicio)
     const enRango = !!rango && dia >= rango.desde && dia <= rango.hasta
     item.soloGuardado =
@@ -145,7 +164,9 @@ export function combinarEventosGoogle(filas, reglas, eventos, { estadoGoogle = n
     if (reglas.porId.has(e.googleId) || yaAgregados.has(e.googleId)) continue
     if (!entraAPendientes(e, reglas)) continue
     yaAgregados.add(e.googleId)
-    items.push(eventoAItem(e))
+    const item = eventoAItem(e)
+    item.color = colorDeEvento(item, reglas)
+    items.push(item)
   }
 
   return items

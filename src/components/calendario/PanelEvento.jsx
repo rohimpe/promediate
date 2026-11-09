@@ -6,6 +6,7 @@ import AccionesChecklist from '../AccionesChecklist'
 import { IconoAdvertencia, ListaChoques } from '../AdvertenciaChoques'
 import TarjetaTarea from '../TarjetaTarea'
 import { IconoGoogle } from './BloqueEvento'
+import ColorEventoGoogle from './ColorEventoGoogle'
 import PendienteGoogle from './PendienteGoogle'
 
 // 'Lunes 9 de noviembre · 10:00–11:30' (hora de Lima). Si cruza la medianoche, muestra ambas fechas.
@@ -133,6 +134,7 @@ export default function PanelEvento({ evento, tarea, choques = [], cambiar, sinc
                 )}
               </div>
             )}
+            {evento.origen === 'google' && seguimiento && <ColorEventoGoogle evento={evento} seguimiento={seguimiento} />}
             {evento.origen === 'google' && seguimiento && <PendienteGoogle evento={evento} seguimiento={seguimiento} />}
           </div>
         )}

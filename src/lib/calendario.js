@@ -21,7 +21,8 @@ import { HORA_ENTREGA_POR_DEFECTO } from './tipos'
 //   fin         Date
 //   todoElDia   true si no tiene hora (se muestra en la franja de arriba)
 //   tipo        'entrega' | 'actividad' | 'evento' (los de Google)
-//   color       '#rrggbb' (en los de Google, el de su colorId: ver colorGoogle)
+//   color       '#rrggbb' (en los de Google, el de su colorId: ver colorGoogle; CalendarioConGoogle lo
+//               reemplaza por el elegido en la app, ver colorDeEvento en seguimiento.js)
 //   estado      'pendiente' | 'completada' | 'justificada' | 'vencida'
 //   origen      'app' | 'google'
 //   curso       nombre del curso o null (solo informativo)
@@ -56,6 +57,21 @@ const COLORES_GOOGLE = {
 export function colorGoogle(colorId) {
   return COLORES_GOOGLE[colorId] ?? COLOR_GOOGLE
 }
+
+// Los 11 colores de la paleta para el selector, con el nombre que les da Google Calendar.
+export const PALETA_GOOGLE = [
+  { colorId: '1', nombre: 'Lavanda' },
+  { colorId: '2', nombre: 'Salvia' },
+  { colorId: '3', nombre: 'Uva' },
+  { colorId: '4', nombre: 'Flamenco' },
+  { colorId: '5', nombre: 'Banana' },
+  { colorId: '6', nombre: 'Mandarina' },
+  { colorId: '7', nombre: 'Pavo real' },
+  { colorId: '8', nombre: 'Grafito' },
+  { colorId: '9', nombre: 'Arándano' },
+  { colorId: '10', nombre: 'Albahaca' },
+  { colorId: '11', nombre: 'Tomate' },
+].map((c) => ({ ...c, valor: COLORES_GOOGLE[c.colorId] }))
 // Entrega sin curso: el índigo de la app.
 export const COLOR_SIN_CURSO = '#6366f1'
 // Color de lo justificado (se ve apagado).

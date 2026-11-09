@@ -4,7 +4,7 @@ import { useGoogleEventos } from '../../hooks/useGoogleEventos'
 import { useMostrarGoogle } from '../../hooks/useMostrarGoogle'
 import { tareasAEventos } from '../../lib/calendario'
 import { buscarChoques, idsConChoque } from '../../lib/choques'
-import { conEstadoDePendiente } from '../../lib/seguimiento'
+import { colorDeEvento, conEstadoDePendiente } from '../../lib/seguimiento'
 import NuevoPendienteModal from '../NuevoPendienteModal'
 import { IconoGoogle } from './BloqueEvento'
 import CalendarView from './CalendarView'
@@ -108,11 +108,12 @@ export default function CalendarioConGoogle({
   const idsCopiasEnGoogle = useMemo(() => new Set(tareas.map((t) => t.google_event_id).filter(Boolean)), [tareas])
   // Los eventos de Google que entran a pendientes llevan su estado (completada, justificada…); los ocultos quedan normales.
   // Las copias de los pendientes de la app no se dibujan: el de la app manda.
+  // El color elegido en la app (por ocurrencia o serie) reemplaza al de Google en todos, entren o no a pendientes.
   const eventosGoogle = useMemo(
     () =>
       google.eventos
         .filter((e) => !idsCopiasEnGoogle.has(e.googleId))
-        .map((e) => conEstadoDePendiente(e, seguimiento.reglas)),
+        .map((e) => conEstadoDePendiente({ ...e, color: colorDeEvento(e, seguimiento.reglas) }, seguimiento.reglas)),
     [google.eventos, idsCopiasEnGoogle, seguimiento.reglas],
   )
   // Las actividades y los eventos de Google con hora que se solapan con otro llevan `choque: true` (ícono de advertencia).

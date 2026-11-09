@@ -72,3 +72,44 @@ export async function borrarOculto(id) {
   const { error } = await supabase.from('google_ocultos').delete().eq('id', id)
   if (error) throw registrarError(error)
 }
+
+// --- google_colores: colores propios de eventos y series (Google no devuelve los personalizados) ---
+
+export async function listarColores() {
+  const { data, error } = await supabase.from('google_colores').select('*')
+  if (error) throw registrarError(error)
+  return data
+}
+
+// Pinta una ocurrencia. Con upsert, volver a elegir color actualiza la fila en vez de duplicarla.
+export async function guardarColorEvento(googleId, colorId) {
+  const { data, error } = await supabase
+    .from('google_colores')
+    .upsert({ google_event_id: googleId, color_id: colorId }, { onConflict: 'user_id,google_event_id' })
+    .select()
+    .single()
+  if (error) throw registrarError(error)
+  return data
+}
+
+// Pinta una serie entera.
+export async function guardarColorSerie(serieId, colorId) {
+  const { data, error } = await supabase
+    .from('google_colores')
+    .upsert({ serie_id: serieId, color_id: colorId }, { onConflict: 'user_id,serie_id' })
+    .select()
+    .single()
+  if (error) throw registrarError(error)
+  return data
+}
+
+// Restablecer: borra la fila y el evento vuelve a su color de Google.
+export async function borrarColorEvento(googleId) {
+  const { error } = await supabase.from('google_colores').delete().eq('google_event_id', googleId)
+  if (error) throw registrarError(error)
+}
+
+export async function borrarColorSerie(serieId) {
+  const { error } = await supabase.from('google_colores').delete().eq('serie_id', serieId)
+  if (error) throw registrarError(error)
+}

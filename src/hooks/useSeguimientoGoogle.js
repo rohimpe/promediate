@@ -2,10 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { guardarIncluirTodoElDia, obtenerIncluirTodoElDia } from '../lib/profileApi'
 import { armarReglas, resumenDeEvento } from '../lib/seguimiento'
 import {
+  borrarColorEvento,
+  borrarColorSerie,
   borrarOculto,
   borrarSeguimiento,
   borrarSeguimientoDeSerie,
+  guardarColorEvento,
+  guardarColorSerie,
   guardarSeguimiento,
+  listarColores,
   listarOcultos,
   listarSeguimiento,
   ocultarEvento,
@@ -13,10 +18,11 @@ import {
 } from '../lib/seguimientoApi'
 import { useAuth } from './useAuth'
 
-// Carga lo guardado sobre los eventos de Google (marcados, ocultos y la preferencia de "todo el día") y
-// ofrece las acciones. La página lo crea UNA vez y se lo pasa a lo que lo necesite.
+// Carga lo guardado sobre los eventos de Google (marcados, ocultos, colores propios y la preferencia de
+// "todo el día") y ofrece las acciones. La página lo crea UNA vez y se lo pasa a lo que lo necesite.
+// Todo se pide de una vez al montar: los colores no son una petición por evento.
 //   const seguimiento = useSeguimientoGoogle()
-//   seguimiento.filas, .ocultos         google_seguimiento (marcados) y google_ocultos
+//   seguimiento.filas, .ocultos, .colores   google_seguimiento (marcados), google_ocultos y google_colores
 //   seguimiento.reglas                  lo mismo indexado (ver armarReglas) para buscar rápido
 //   seguimiento.incluirTodoElDia        profiles.google_incluir_todo_el_dia
 //   seguimiento.cargando, .error
@@ -29,11 +35,14 @@ import { useAuth } from './useAuth'
 //   quitarSerie(x)          oculta toda la serie (y borra las marcas de sus ocurrencias)
 //   volverAIncluir(oculto)  borra la fila de google_ocultos
 //   cambiarIncluirTodoElDia(valor)
+//   cambiarColor(x, colorId, alcance)   color propio: alcance 'evento' (solo esta ocurrencia) o 'serie' (toda la serie)
+//   restablecerColor(x, alcance)        borra el color propio: vuelve al de Google
 export function useSeguimientoGoogle() {
   const { user } = useAuth()
   const userId = user?.id
   const [filas, setFilas] = useState([])
   const [ocultos, setOcultos] = useState([])
+  const [colores, setColores] = useState([])
   const [incluirTodoElDia, setIncluirTodoElDia] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -41,12 +50,19 @@ export function useSeguimientoGoogle() {
   useEffect(() => {
     if (!userId) return
     let activo = true // evita actualizar el estado si el componente ya se cerró
-    Promise.all([listarSeguimiento(), listarOcultos(), obtenerIncluirTodoElDia(userId)])
-      .then(([f, o, todoElDia]) => {
+    Promise.all([
+      listarSeguimiento(),
+      listarOcultos(),
+      obtenerIncluirTodoElDia(userId),
+      // Los colores son un adorno: si fallan (el error ya salió en consola), el resto sigue funcionando.
+      listarColores().catch(() => []),
+    ])
+      .then(([f, o, todoElDia, c]) => {
         if (!activo) return
         setFilas(f)
         setOcultos(o)
         setIncluirTodoElDia(todoElDia)
+        setColores(c)
       })
       .catch(() => activo && setError('No se pudieron cargar tus eventos de Google.'))
       .finally(() => activo && setCargando(false))
@@ -55,7 +71,10 @@ export function useSeguimientoGoogle() {
     }
   }, [userId])
 
-  const reglas = useMemo(() => armarReglas(filas, ocultos, incluirTodoElDia), [filas, ocultos, incluirTodoElDia])
+  const reglas = useMemo(
+    () => armarReglas(filas, ocultos, incluirTodoElDia, colores),
+    [filas, ocultos, incluirTodoElDia, colores],
+  )
 
   // Guarda la fila en pantalla reemplazando la de la misma ocurrencia (nunca queda una repetida).
   const ponerFila = useCallback((fila) => {
@@ -103,9 +122,41 @@ export function useSeguimientoGoogle() {
     [userId],
   )
 
+  // El color de la ocurrencia manda sobre el de la serie. Por eso, al pintar una serie también se borra el color
+  // propio de ESTA ocurrencia (si no, seguiría con el suyo); y al restablecer una serie, igual. Las demás
+  // ocurrencias con color propio lo conservan (la base no sabe de qué serie son).
+  const cambiarColor = useCallback(
+    async (x, colorId, alcance) => {
+      const deSerie = alcance === 'serie' && !!x.serieId
+      const fila = deSerie ? await guardarColorSerie(x.serieId, colorId) : await guardarColorEvento(x.googleId, colorId)
+      const propioDeEvento = deSerie && colores.some((c) => c.google_event_id === x.googleId)
+      if (propioDeEvento) await borrarColorEvento(x.googleId)
+      // El upsert actualiza la fila existente (mismo id), así que basta reemplazarla.
+      setColores((actuales) => [
+        ...actuales.filter((c) => c.id !== fila.id && !(propioDeEvento && c.google_event_id === x.googleId)),
+        fila,
+      ])
+    },
+    [colores],
+  )
+
+  const restablecerColor = useCallback(
+    async (x, alcance) => {
+      const hayDeSerie = alcance === 'serie' && !!x.serieId && colores.some((c) => c.serie_id === x.serieId)
+      const hayDeEvento = colores.some((c) => c.google_event_id === x.googleId)
+      if (hayDeSerie) await borrarColorSerie(x.serieId)
+      if (hayDeEvento) await borrarColorEvento(x.googleId)
+      setColores((actuales) =>
+        actuales.filter((c) => !(hayDeSerie && c.serie_id === x.serieId) && !(hayDeEvento && c.google_event_id === x.googleId)),
+      )
+    },
+    [colores],
+  )
+
   return {
     filas,
     ocultos,
+    colores,
     reglas,
     incluirTodoElDia,
     cargando,
@@ -116,6 +167,8 @@ export function useSeguimientoGoogle() {
     quitarSerie,
     volverAIncluir,
     cambiarIncluirTodoElDia,
+    cambiarColor,
+    restablecerColor,
   }
 }
 
