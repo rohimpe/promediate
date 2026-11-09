@@ -44,6 +44,24 @@ export async function obtenerIncluirTodoElDia(userId) {
   return data?.google_incluir_todo_el_dia ?? false
 }
 
+// ¿Los pendientes nuevos se crean también en Google Calendar? (valor por defecto del interruptor del formulario).
+export async function obtenerSincronizarGoogle(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('google_sincronizar')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw registrarError(error)
+  return data?.google_sincronizar ?? true
+}
+
+export async function guardarSincronizarGoogle(userId, valor) {
+  const { error } = await supabase
+    .from('profiles')
+    .upsert({ id: userId, google_sincronizar: valor })
+  if (error) throw registrarError(error)
+}
+
 export async function guardarIncluirTodoElDia(userId, valor) {
   const { error } = await supabase
     .from('profiles')

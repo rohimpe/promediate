@@ -68,11 +68,15 @@ function AvisoGoogle({ estado, error, truncado }) {
 // (solo lectura). Es lo que usan la página Calendario y el calendario compacto del Inicio.
 // Maneja el interruptor «Mostrar Google Calendar», los avisos, el panel de detalles y el modal para crear.
 //
-//   tareas, cambiar, crear:  los de useTasks
+//   tareas, cambiar, crear, sincronizar:  los de useTasks (sincronizar = "Reintentar" con Google en el panel)
 //   seguimiento:  el de useSeguimientoGoogle (la página lo crea una vez y lo comparte con Hoy, etc.).
 //                 Los eventos de Google que entran a pendientes muestran su estado y se pueden marcar en el panel.
 //   El resto de las propiedades (vistas, vistaInicial, alturaMaxima…) van directo a <CalendarView>.
-export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimiento, ...propsCalendario }) {
+//
+// Sin duplicados: un pendiente creado en Google por la app (Parte C) aparece una sola vez, como pendiente. La función
+// google-calendar-events ya descarta esos eventos; aquí se descartan también por su id (tasks.google_event_id),
+// por si alguno llega igual (p. ej. de la caché pedida justo antes de crearlo).
+export default function CalendarioConGoogle({ tareas, cambiar, crear, sincronizar, seguimiento, ...propsCalendario }) {
   const [mostrar, setMostrar] = useMostrarGoogle()
   const [rango, setRango] = useState(null) // días visibles, lo informa <CalendarView>
   const google = useGoogleEventos(rango, mostrar)
@@ -80,10 +84,15 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimient
   const [nuevo, setNuevo] = useState(null) // valores iniciales del modal "Nuevo pendiente" (null = cerrado)
 
   const eventosApp = useMemo(() => tareasAEventos(tareas), [tareas])
+  const idsCopiasEnGoogle = useMemo(() => new Set(tareas.map((t) => t.google_event_id).filter(Boolean)), [tareas])
   // Los eventos de Google que entran a pendientes llevan su estado (completada, justificada…); los ocultos quedan normales.
+  // Las copias de los pendientes de la app no se dibujan: el de la app manda.
   const eventosGoogle = useMemo(
-    () => google.eventos.map((e) => conEstadoDePendiente(e, seguimiento.reglas)),
-    [google.eventos, seguimiento.reglas],
+    () =>
+      google.eventos
+        .filter((e) => !idsCopiasEnGoogle.has(e.googleId))
+        .map((e) => conEstadoDePendiente(e, seguimiento.reglas)),
+    [google.eventos, idsCopiasEnGoogle, seguimiento.reglas],
   )
   // Las actividades y los eventos de Google con hora que se solapan con otro llevan `choque: true` (ícono de advertencia).
   const eventos = useMemo(() => {
@@ -95,7 +104,9 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimient
   // Se busca por id en cada render para que el panel refleje los cambios (completar, deshacer…).
   const evento = eventos.find((e) => e.id === seleccionado)
   const tarea = evento?.origen === 'app' ? tareas.find((t) => t.id === evento.id) : undefined
-  const choques = evento?.choque ? buscarChoques(evento, eventos, { excluirId: evento.id }) : []
+  const choques = evento?.choque
+    ? buscarChoques(evento, eventos, { excluirId: evento.id, excluirGoogleId: tarea?.google_event_id ?? null })
+    : []
 
   return (
     <>
@@ -144,6 +155,7 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimient
           tarea={tarea}
           choques={choques}
           cambiar={cambiar}
+          sincronizar={sincronizar}
           seguimiento={seguimiento}
           onCerrar={() => setSeleccionado(null)}
         />

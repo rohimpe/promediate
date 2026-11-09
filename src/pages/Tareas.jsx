@@ -22,8 +22,9 @@ const AVISO_GOOGLE = {
 }
 
 export default function Tareas() {
-  const { tareas, cargando, error, borrar } = useTasks()
+  const { tareas, cargando, error, borrar, sincronizar } = useTasks()
   const [errorBorrar, setErrorBorrar] = useState('')
+  const [avisoBorrar, setAvisoBorrar] = useState('') // se borró, pero el evento pudo quedar en Google
   const [filtro, setFiltro] = useState('app') // 'app' = tus pendientes · 'google' = eventos de Google
 
   const hoy = hoyEnLima()
@@ -36,8 +37,12 @@ export default function Tareas() {
   async function onBorrar(tarea) {
     if (!window.confirm(`¿Borrar "${tarea.titulo}"? No se puede deshacer.`)) return
     setErrorBorrar('')
+    setAvisoBorrar('')
     try {
-      await borrar(tarea.id)
+      const { eventoQuedo } = await borrar(tarea.id)
+      if (eventoQuedo) {
+        setAvisoBorrar(`Se borró "${tarea.titulo}", pero su evento pudo quedar en Google Calendar. Puedes borrarlo allí.`)
+      }
     } catch {
       setErrorBorrar('No se pudo borrar el pendiente. Inténtalo de nuevo.')
     }
@@ -91,6 +96,15 @@ export default function Tareas() {
             </p>
           )}
 
+          {avisoBorrar && (
+            <p
+              role="status"
+              className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+            >
+              {avisoBorrar}
+            </p>
+          )}
+
           {!cargando && !error && tareas.length === 0 && (
             <p className="text-gray-600 dark:text-gray-400">
               Aún no tienes pendientes. Crea el primero con “+ Nuevo pendiente”.
@@ -102,6 +116,7 @@ export default function Tareas() {
               <TarjetaTarea
                 key={t.id}
                 tarea={t}
+                onReintentarGoogle={() => sincronizar(t.id, 'crear')}
                 acciones={
                   <div className="flex gap-2">
                     <Link

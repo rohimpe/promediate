@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import PendienteForm from '../components/PendienteForm'
-import { actualizarTarea, obtenerTarea } from '../lib/tasksApi'
+import { actualizarPendiente } from '../lib/googleSync'
+import { obtenerTarea } from '../lib/tasksApi'
 
 export default function EditarTarea() {
   const { id } = useParams()
@@ -23,7 +24,8 @@ export default function EditarTarea() {
     }
   }, [id])
 
-  const guardar = (campos) => actualizarTarea(id, campos)
+  // Guarda y, según el interruptor "Añadir a Google Calendar", crea, actualiza o borra el evento.
+  const guardar = (campos, opciones) => actualizarPendiente(tarea, campos, opciones)
 
   if (estado === 'cargando') return <p className="text-gray-600 dark:text-gray-400">Cargando…</p>
 

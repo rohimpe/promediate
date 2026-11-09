@@ -6,6 +6,11 @@ export const URL_TOKEN = 'https://oauth2.googleapis.com/token'
 export const URL_REVOCAR = 'https://oauth2.googleapis.com/revoke'
 export const URL_USUARIO = 'https://openidconnect.googleapis.com/v1/userinfo'
 
+export const URL_EVENTOS = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
+export const SCOPE_CALENDAR = 'https://www.googleapis.com/auth/calendar.events'
+// Marca (extendedProperties.private.origen) de los eventos que crea esta app en Google Calendar.
+export const ORIGEN_APP = 'tablero-de-vida'
+
 export const SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/drive.file',

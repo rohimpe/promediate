@@ -31,3 +31,30 @@ export async function obtenerEventosGoogle(desde, hasta) {
   if (error) throw registrarError(error)
   return { estado: data.estado, eventos: data.eventos ?? [], truncado: !!data.truncado }
 }
+
+// Crea, actualiza o borra en Google Calendar el evento de un pendiente (accion: 'crear' | 'actualizar' | 'borrar').
+// Solo se manda el id: la función lee la tarea y arma el evento. NUNCA lanza error:
+// devuelve { estado, google_event_id, google_sync, google_sync_error } (cómo quedó la tarea), o
+// { estado: 'error', google_sync: null } si la función no respondió (no se sabe cómo quedó).
+export async function sincronizarConGoogle(accion, tareaId) {
+  const { data, error } = await supabase.functions.invoke('google-calendar-sync', {
+    body: { accion, tarea_id: tareaId },
+  })
+  if (error || !data?.estado) {
+    if (error) registrarError(error)
+    return { estado: 'error', google_sync: null }
+  }
+  return data
+}
+
+// Enlace directo a un evento del calendario principal del usuario. Es el mismo formato que usa Google
+// (htmlLink): base64 de "<id del evento> <id del calendario>", y el id del calendario principal es el correo.
+export function enlaceEventoGoogle(idEvento, emailGoogle) {
+  if (!idEvento || !emailGoogle) return null
+  try {
+    const eid = btoa(`${idEvento} ${emailGoogle}`).replace(/=+$/, '')
+    return `https://www.google.com/calendar/event?eid=${eid}`
+  } catch {
+    return null // btoa no acepta caracteres fuera de Latin-1 (un correo raro): mejor sin enlace
+  }
+}

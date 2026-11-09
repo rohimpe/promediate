@@ -25,7 +25,7 @@ function Seccion({ titulo, color = '', children }) {
 // Página "Hoy": el checklist diario. Se calcula al abrir, según el día actual en Lima.
 // Entregas, actividades y eventos de Google van en una sola lista (ver unirListaHoy para el orden).
 export default function Hoy() {
-  const { tareas, cargando, error, cambiar } = useTasks()
+  const { tareas, cargando, error, cambiar, sincronizar } = useTasks()
   // Ids que el usuario cerró en esta sesión: se quedan visibles en "Hechas" aunque
   // sean de días anteriores, para poder deshacer el cambio.
   const [cerradas, setCerradas] = useState(() => new Set())
@@ -67,6 +67,7 @@ export default function Hoy() {
         key={t.id}
         tarea={t}
         conIcono
+        onReintentarGoogle={() => sincronizar(t.id, 'crear')}
         acciones={
           <AccionesChecklist
             tarea={t}

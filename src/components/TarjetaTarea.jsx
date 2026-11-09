@@ -1,6 +1,7 @@
 import { formatearFecha, formatearFechaHora, textoPlazo } from '../lib/fechas'
 import { diasRestantes, estaVencida, prioridadActual } from '../lib/priority'
 import { NOMBRE_TIPO, recortarHora } from '../lib/tipos'
+import EstadoGoogleTarea from './EstadoGoogleTarea'
 import EtiquetaPrioridad from './EtiquetaPrioridad'
 import EtiquetaVencida from './EtiquetaVencida'
 import { IconoActividad, IconoEntrega } from './IconosTipo'
@@ -12,7 +13,8 @@ const ESTADOS = {
 
 // "acciones": botones o formularios que muestra cada página debajo de la tarjeta.
 // "conIcono": ícono de entrega o de actividad antes del título (Hoy los lleva para distinguir las filas).
-export default function TarjetaTarea({ tarea, acciones, conIcono = false }) {
+// "onReintentarGoogle": botón "Reintentar" si el pendiente no se pudo añadir a Google Calendar (ver EstadoGoogleTarea).
+export default function TarjetaTarea({ tarea, acciones, conIcono = false, onReintentarGoogle }) {
   const pendiente = tarea.estado === 'pendiente'
   const dias = diasRestantes(tarea)
   // Entrega: "18 oct, 14:30" · Actividad: "18 oct, 14:00–16:00"
@@ -77,6 +79,8 @@ export default function TarjetaTarea({ tarea, acciones, conIcono = false }) {
       {tarea.descripcion && (
         <p className="mt-2 text-sm whitespace-pre-line text-gray-700 dark:text-gray-300">{tarea.descripcion}</p>
       )}
+
+      <EstadoGoogleTarea tarea={tarea} onReintentar={onReintentarGoogle} />
 
       {acciones && <div className="mt-3">{acciones}</div>}
     </li>

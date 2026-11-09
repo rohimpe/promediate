@@ -24,6 +24,18 @@ export async function listarActividadesDelDia(fecha) {
   return data
 }
 
+// Pendientes sin evento en Google (para "Sincronizar mis pendientes existentes"). Cuáles son futuros
+// se decide después, con la hora de Lima (pendientesParaSincronizar).
+export async function listarPendientesSinGoogle() {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('estado', 'pendiente')
+    .is('google_event_id', null)
+  if (error) throw registrarError(error)
+  return data
+}
+
 export async function obtenerTarea(id) {
   const { data, error } = await supabase.from('tasks').select('*').eq('id', id).maybeSingle()
   if (error) throw registrarError(error)

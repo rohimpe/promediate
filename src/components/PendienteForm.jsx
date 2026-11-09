@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { useComprobarChoques } from '../hooks/useComprobarChoques'
+import { useConexionGoogle } from '../hooks/useConexionGoogle'
 import { useCourses } from '../hooks/useCourses'
 import { aInputDatetime, deInputDatetime } from '../lib/fechas'
+import { estaEnGoogle } from '../lib/googleSync'
 import { HORA_ENTREGA_POR_DEFECTO, recortarHora } from '../lib/tipos'
 import AdvertenciaChoques from './AdvertenciaChoques'
 import { Atajos, AtajosFecha } from './Atajos'
+import { IconoGoogle } from './calendario/BloqueEvento'
 import CampoSelect from './CampoSelect'
 import CampoTexto from './CampoTexto'
 import SelectorHora from './SelectorHora'
@@ -19,7 +22,10 @@ import SelectorTipo from './SelectorTipo'
 //                       { tipo: 'tarea' | 'actividad', fecha: 'YYYY-MM-DD', horaEntrega, horaInicio,
 //                         horaFin, cursoId }. `fecha` sirve para los dos tipos, así no se pierde al
 //                       cambiar de tipo.
-//   onGuardar(campos):  guarda en Supabase (quien usa el formulario decide cómo); si falla, lanza el error
+//   onGuardar(campos, opciones):  guarda en Supabase (quien usa el formulario decide cómo); si falla, lanza el error.
+//                       opciones = { anadirAGoogle } con el interruptor "Añadir a Google Calendar", que solo se ve si
+//                       Google está conectado (si no, opciones = {}). Por defecto: en uno nuevo, la preferencia del
+//                       perfil (profiles.google_sincronizar); al editar, si el pendiente ya está en Google.
 //   onGuardado:         se llama cuando onGuardar terminó bien (navegar, cerrar el modal…)
 //   onCancelar:         si se pasa, "Cancelar" es un botón que lo llama; si no, vuelve a Pendientes
 //                       Las actividades se comparan con el resto del horario antes de guardar: si se cruzan, se
@@ -29,6 +35,7 @@ import SelectorTipo from './SelectorTipo'
 export default function PendienteForm({ inicial, valoresIniciales, onGuardar, onGuardado, onCancelar, onEstado }) {
   const { cursos } = useCourses()
   const comprobarChoques = useComprobarChoques()
+  const google = useConexionGoogle()
   const v = valoresIniciales ?? {}
   const [titulo, setTitulo] = useState(inicial?.titulo ?? '')
   const [descripcion, setDescripcion] = useState(inicial?.descripcion ?? '')
@@ -46,6 +53,9 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [choques, setChoques] = useState(null) // lo que se cruza con la actividad (null = sin advertencia)
+  // null = el usuario no tocó el interruptor: vale el valor por defecto (que llega cuando carga la conexión).
+  const [elegidoGoogle, setElegidoGoogle] = useState(null)
+  const anadirAGoogle = elegidoGoogle ?? (inicial ? estaEnGoogle(inicial) : google.sincronizar)
 
   const esEntrega = tipo === 'tarea'
   const sucio = titulo.trim() !== '' || descripcion.trim() !== ''
@@ -102,17 +112,20 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
     try {
       // Los campos que no corresponden al tipo se guardan en null,
       // así al cambiar de tipo no quedan datos viejos.
-      await onGuardar({
-        titulo: titulo.trim(),
-        descripcion: descripcion.trim() || null,
-        tipo,
-        prioridad_base: prioridadBase,
-        course_id: esEntrega ? cursoId || null : null,
-        fecha_entrega: esEntrega ? deInputDatetime(`${fechaEntrega}T${horaEntrega}`) : null,
-        fecha_actividad: esEntrega ? null : fechaActividad,
-        hora_inicio: esEntrega ? null : horaInicio,
-        hora_fin: esEntrega ? null : horaFin,
-      })
+      await onGuardar(
+        {
+          titulo: titulo.trim(),
+          descripcion: descripcion.trim() || null,
+          tipo,
+          prioridad_base: prioridadBase,
+          course_id: esEntrega ? cursoId || null : null,
+          fecha_entrega: esEntrega ? deInputDatetime(`${fechaEntrega}T${horaEntrega}`) : null,
+          fecha_actividad: esEntrega ? null : fechaActividad,
+          hora_inicio: esEntrega ? null : horaInicio,
+          hora_fin: esEntrega ? null : horaFin,
+        },
+        google.conectado ? { anadirAGoogle } : {},
+      )
     } catch (err) {
       // Todo lo escrito se conserva; solo mostramos el error de verdad (el de Supabase o de red).
       if (montado.current) {
@@ -219,6 +232,20 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
         <option value="media">Media</option>
         <option value="baja">Baja</option>
       </CampoSelect>
+
+      {google.conectado && (
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={anadirAGoogle}
+            onChange={(e) => setElegidoGoogle(e.target.checked)}
+            className="size-4 accent-indigo-600"
+          />
+          <IconoGoogle className="size-3.5" />
+          Añadir a Google Calendar
+        </label>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">

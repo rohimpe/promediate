@@ -28,9 +28,10 @@ function textoHorario(evento) {
 //             `seguimiento`, los botones para marcarlos (Fui / Justificar) o quitarlos de tus pendientes.
 //   choques:  los elementos con hora que se solapan con este evento (vacío si no hay); se explican en un aviso
 //   cambiar:  (id, campos) => Promise, el `cambiar` de useTasks
+//   sincronizar: (id, accion) => Promise, el `sincronizar` de useTasks ("Reintentar" si no se pudo añadir a Google)
 //   seguimiento: lo que devuelve useSeguimientoGoogle(); sin él, los eventos de Google son de solo lectura
 //   onCerrar: se llama al cerrar por cualquier vía (botón, Esc o clic afuera)
-export default function PanelEvento({ evento, tarea, choques = [], cambiar, seguimiento, onCerrar }) {
+export default function PanelEvento({ evento, tarea, choques = [], cambiar, sincronizar, seguimiento, onCerrar }) {
   const dialogRef = useRef(null)
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function PanelEvento({ evento, tarea, choques = [], cambiar, segu
           <ul>
             <TarjetaTarea
               tarea={tarea}
+              onReintentarGoogle={sincronizar ? () => sincronizar(tarea.id, 'crear') : undefined}
               acciones={
                 <div className="space-y-3">
                   {/* key: al cambiar de estado se vuelve a montar y los botones salen sin "ocupado" */}

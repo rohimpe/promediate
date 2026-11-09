@@ -31,16 +31,16 @@ src/
   components/     # piezas reutilizables; calendario/ e inicio/ tienen las suyas
   pages/          # Inicio, Hoy, Calendario, Promedios, CursoEvaluaciones, Tareas (Pendientes),
                   # NuevaTarea (Nuevo pendiente), EditarTarea, Conexiones, Login, Registro
-  lib/            # supabaseClient, fechas, tipos, priority, checklist, calendario, inicio, arbol, grades, seguimiento (eventos de Google como pendientes: entran, ocultos, marcados), choques (choques de horario), APIs (googleApi: conexión con Google; seguimientoApi)
-  hooks/          # useAuth, useTasks, useCursosConNotas, useEvaluaciones, useGoogleEventos, useSeguimientoGoogle, usePendientesGoogle, useComprobarChoques, ...
+  lib/            # supabaseClient, fechas, tipos, priority, checklist, calendario, inicio, arbol, grades, seguimiento (eventos de Google como pendientes: entran, ocultos, marcados), choques (choques de horario), googleSync (pendientes como eventos de Google: cuándo crear, actualizar o borrar), APIs (googleApi: conexión con Google y sincronización; seguimientoApi)
+  hooks/          # useAuth, useTasks, useCursosConNotas, useEvaluaciones, useGoogleEventos, useSeguimientoGoogle, usePendientesGoogle, useComprobarChoques, useConexionGoogle, ...
 supabase/
   migrations/
   diagnostico_pesos.sql          # solo lee; revisa los pesos antes de migrar
   verificar_es_nodo_propio.sql   # solo lee; compara la base real con la migración de RLS
   verificar_google_rls.sql       # solo lee; comprueba RLS activo y cero políticas en las tablas de Google
   config.toml             # mínimo: solo deja google-callback sin verificación de JWT
-  functions/              # Edge Functions (Deno): google-connect, google-callback, google-disconnect, google-calendar-events
-    _shared/              # cors, supabaseAdmin, cifrado (AES-GCM), google (tokens y constantes)
+  functions/              # Edge Functions (Deno): google-connect, google-callback, google-disconnect, google-calendar-events, google-calendar-sync
+    _shared/              # cors, supabaseAdmin, cifrado (AES-GCM), google (tokens y constantes: URL_EVENTOS, SCOPE_CALENDAR, ORIGEN_APP)
 ```
 
 ---
@@ -58,7 +58,7 @@ Supabase Auth con correo y contraseña. Sin sesión, todo redirige a Login (`Pro
 - Campos: título, descripción, prioridad base (`alta`/`media`/`baja`), curso (solo entregas, opcional). Arriba, dos tarjetas para elegir Entrega o Actividad.
 - **Prioridad dinámica** (no se guarda, se calcula en `src/lib/priority.js`): `baja` → `media` con ≤ 5 días; `media` → `alta` con ≤ 2 días; si vence hoy, siempre `alta`.
 - Estados guardados: `pendiente`, `completada`, `justificada` (motivo obligatorio). `vencida` se calcula (`estaVencida`).
-- Fase 3: al crear un pendiente se crea también el evento en Google Calendar (`google_event_id`).
+- Fase 3, parte C: al crear un pendiente se puede crear también su evento en Google Calendar (`google_event_id`; ver sección 8b).
 
 ### 3. Hoy (checklist diario)
 - Muestra las entregas que vencen hoy y las actividades de hoy; se calcula con la fecha de Lima, no hay proceso que lo genere.
@@ -142,6 +142,26 @@ Página **Conexiones** (`/conexiones`, en el menú) con una tarjeta de Google: *
 - **Secrets de Supabase:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APP_URL` (sin barra final), `TOKEN_ENCRYPTION_KEY` (32 bytes en base64). `SUPABASE_URL` y la service role las inyecta Supabase.
 - **Despliegue:** `supabase functions deploy google-connect`, `google-callback` (`verify_jwt = false` en `supabase/config.toml`), `google-disconnect` y `google-calendar-events`; migración `20261108000000_google_conexiones.sql` en el SQL Editor **antes** de probar. Sin Docker: añadir `--use-api`. Para la parte B2 (versión definitiva): migración `20261110000000_google_eventos_automaticos.sql` en el SQL Editor (sirve tanto si ya corriste `20261109000000_google_seguimiento.sql` como si no: borra `google_series_seguidas` y las filas `pendiente`, y conserva lo ya marcado) y volver a desplegar `google-calendar-events` (`npx supabase functions deploy google-calendar-events --use-api`; ya devuelve `serieId`).
 
+### 8b. Pendientes en Google Calendar (Fase 3, parte C — hecha, pendiente de probar)
+Las entregas y actividades de la app se crean y mantienen como eventos en el Google Calendar del usuario. Aún **no** se editan eventos que ya existían en Google (parte C2) ni se toca Drive.
+
+- **Edge Function `google-calendar-sync`** (con JWT, que además verifica con `usuarioDeLaPeticion`; CORS de `_shared/cors.ts`): recibe **solo** `{ accion: 'crear' | 'actualizar' | 'borrar', tarea_id }`. Lee la tarea con la service role filtrando por el `user_id` del JWT y arma el evento dentro de la función (el cliente nunca manda datos del evento). Valida que los scopes incluyan `calendar.events`. Responde `{ estado, google_event_id, google_sync, google_sync_error }` con `estado` = `ok` | `no_conectado` | `reconectar` | `permisos_incompletos` | `error`. `invalid_grant` lo maneja `obtenerAccessToken` (marca `reconectar`). Los logs solo llevan códigos.
+  - **Id determinista:** el uuid de la tarea sin guiones. Crear = `POST`; si Google responde 409 (ya existía), `PUT` sobre ese id: reintentar nunca duplica. Actualizar = `PUT` (reemplaza el evento entero, con `status: 'confirmed'`: si el usuario lo borró en Google, reaparece; el de la app manda); si responde 404/410, se vuelve a crear. La función siempre usa el id derivado de la tarea, nunca uno que venga de la base o del cliente.
+  - **Evento:** actividad = fecha + `hora_inicio`/`hora_fin` en `America/Lima` (sin hora: todo el día), título tal cual, popup 30 min antes. Entrega = termina en la hora límite y dura 30 min, título "📚 <título>", "Curso: …" en la descripción, popups 240, 60 y 15 min antes. Descripción + línea "Creado desde Tablero de Vida". `reminders.useDefault = false`. `extendedProperties.private = { origen: 'tablero-de-vida', tarea_id }`.
+  - **Estado visual:** completada → "✓ " + `colorId` 8 (gris); justificada → "~ " + gris; pendiente → sin prefijo ni color.
+  - **Borrar:** `DELETE`; 404/410 cuentan como borrado. Limpia `google_event_id` y deja `google_sync = 'ninguno'`.
+  - Si falla al crear o actualizar, guarda `google_sync = 'error'` y un `google_sync_error` genérico.
+- **Frontend** (`src/lib/googleSync.js`, `sincronizarConGoogle` en `googleApi.js`, que nunca lanza error):
+  - **El pendiente se guarda SIEMPRE primero.** Si Google falla, queda `google_sync = 'pendiente'` (se pidió y no llegó respuesta) o `'error'`; si la función ni responde, el frontend marca `'error'`.
+  - **Crear:** `PendienteForm` muestra "Añadir a Google Calendar" solo si Google está conectado (`useConexionGoogle`: caché compartida de `mi_conexion_google()` + `profiles.google_sincronizar`, `recargarConexionGoogle()` al desconectar). Por defecto: `profiles.google_sincronizar` en uno nuevo; al editar, si ya está en Google. `onGuardar(campos, { anadirAGoogle })`. Nuevo pendiente usa `crearPendiente` (espera a Google antes de volver a la lista); el modal del calendario usa `useTasks.crear` (sincroniza en segundo plano).
+  - **Editar** (`actualizarPendiente` + `accionTrasEditar`): interruptor encendido → crear o actualizar; apagado → borrar el evento si estaba; sin interruptor → actualizar solo si ya estaba. **Completar, justificar o deshacer** (`useTasks.cambiar`) → `actualizar` en segundo plano si está en Google (`estaEnGoogle`: tiene `google_event_id` o `google_sync` ≠ `ninguno`).
+  - **Borrar** (`borrarPendiente`): `borrar` en Google antes de eliminar la fila; si falla, borra la tarea igual y Pendientes avisa que el evento pudo quedar en Google.
+  - **En cada pendiente** (`EstadoGoogleTarea`, dentro de `TarjetaTarea`; solo con Google conectado): sincronizado → ícono + "Abrir en Google Calendar" (`enlaceEventoGoogle`: `eid` = base64 de "<id> <correo de Google>"); `pendiente`/`error` → aviso ámbar discreto con "Reintentar" (`useTasks.sincronizar(id, 'crear')`).
+  - **Conexiones:** interruptor "Crear eventos en Google automáticamente" (`profiles.google_sincronizar`) y "Sincronizar mis pendientes existentes": confirma cuántos son (pendientes futuros sin completar y sin `google_event_id`, `pendientesParaSincronizar`) y los crea de 5 en 5 (`sincronizarVarias`) con barra de progreso.
+  - **Sin duplicados ni falsos choques:** `google-calendar-events` descarta los eventos con `origen = 'tablero-de-vida'` o cuyo id está en `tasks.google_event_id`; `CalendarioConGoogle` también descarta por id (por la caché previa) y pasa `excluirGoogleId` a `buscarChoques`; `useComprobarChoques` ya excluía la copia del pendiente que se edita.
+  - Sin Google conectado todo funciona como antes: ni interruptor ni avisos.
+- **Despliegue:** migración `20261111000000_google_sincronizar_pendientes.sql` en el SQL Editor y luego `npx supabase functions deploy google-calendar-sync` (sin Docker: `--use-api`). Conviene volver a desplegar `google-calendar-events` (ahora importa las constantes de `_shared/google.ts`).
+
 ### 9. Archivos (Fase 3, parte D)
 Carpetas (una por curso). Los adjuntos se suben al Google Drive del usuario con el permiso `drive.file`.
 
@@ -161,9 +181,9 @@ El usuario elige su proveedor y guarda su propia API key (cifrada, usada solo de
 
 Las 4 tablas principales tienen RLS activo con políticas por usuario (`user_id = auth.uid()`; en `profiles`, `id = auth.uid()`). Las 2 tablas de conexión de Google (`google_oauth_states`, `google_connections`) tienen RLS activo **sin políticas** a propósito. Las 2 de eventos de Google (`google_seguimiento`, `google_ocultos`) tienen RLS con políticas por usuario, solo con `user_id = (select auth.uid())` (sin subconsultas).
 
-- **`profiles`**: `id` (= auth.users.id), `nombre`, `ultimo_resumen` (date), `google_incluir_todo_el_dia` (boolean, default false), `created_at`. Sin política de borrado (se borra con el usuario).
+- **`profiles`**: `id` (= auth.users.id), `nombre`, `ultimo_resumen` (date), `google_incluir_todo_el_dia` (boolean, default false), `google_sincronizar` (boolean, default true: crear los pendientes nuevos en Google), `created_at`. Sin política de borrado (se borra con el usuario).
 - **`courses`**: `id`, `user_id`, `nombre`, `color`, `created_at`.
-- **`tasks`**: `id`, `user_id`, `course_id` (nullable; al borrar el curso queda en null), `titulo`, `descripcion`, `tipo` (`tarea` | `actividad`), `prioridad_base`, `fecha_entrega` (timestamptz, solo entregas), `fecha_actividad` (date, solo actividades), `hora_inicio` y `hora_fin` (time, nullable; hora de pared de Lima; fin > inicio), `estado` (`pendiente` | `completada` | `justificada`), `justificacion`, `completed_at`, `google_event_id` (nullable), `created_at`.
+- **`tasks`**: `id`, `user_id`, `course_id` (nullable; al borrar el curso queda en null), `titulo`, `descripcion`, `tipo` (`tarea` | `actividad`), `prioridad_base`, `fecha_entrega` (timestamptz, solo entregas), `fecha_actividad` (date, solo actividades), `hora_inicio` y `hora_fin` (time, nullable; hora de pared de Lima; fin > inicio), `estado` (`pendiente` | `completada` | `justificada`), `justificacion`, `completed_at`, `google_event_id` (nullable; = id de la tarea sin guiones cuando está en Google), `google_sync` (`ninguno` | `ok` | `pendiente` | `error`, default `ninguno`), `google_sync_error` (texto genérico, ≤ 200, nullable), `created_at`.
 - **`evaluations`**: `id`, `user_id`, `course_id`, `parent_id` (nullable; al borrar un nodo se borran sus hijos), `nombre`, `peso` (numeric 0–100, **% del padre**), `nota` (numeric 0–20, nullable), `orden`, `reparto` (`manual` | `iguales`, default `manual`), `descartar_peores` (int ≥ 0, default 0).
 - **`google_oauth_states`** (solo Edge Functions): `state` (PK, aleatorio), `user_id`, `expira_en` (10 min), `created_at`. Los vencidos se borran al crear uno nuevo.
 - **`google_seguimiento`**: `id`, `user_id` (default `auth.uid()`, `on delete cascade`), `google_event_id` (id de la ocurrencia en Google), `serie_id` (nullable), `titulo`, `inicio` (timestamptz), `fin` (nullable), `todo_el_dia`, `estado` (`completada` | `justificada`; justificada exige motivo), `justificacion`, `completed_at`, `created_at`. Único por (`user_id`, `google_event_id`). **Una fila existe solo si el usuario marcó el evento**; los pendientes son virtuales.
@@ -196,7 +216,8 @@ Las 4 tablas principales tienen RLS activo con políticas por usuario (`user_id 
   - [x] **A:** conectar la cuenta de Google (sección 8; hecha y probada)
   - [ ] **B:** leer eventos de Google Calendar (sección 6; hecha, falta confirmar la prueba en local)
     - [ ] **B2:** eventos de Google como pendientes en Hoy y Pendientes, que el usuario puede quitar (sección 6; hecha, falta ejecutar la migración `20261110000000` y probar)
-  - [ ] **C:** crear los pendientes como eventos en Google Calendar (`google_event_id`)
+  - [ ] **C:** crear y sincronizar los pendientes como eventos en Google Calendar (sección 8b; hecha, falta ejecutar la migración `20261111000000`, desplegar `google-calendar-sync` y probar)
+    - [ ] **C2:** editar desde la app eventos que ya existían en Google
   - [ ] **D:** archivos en Google Drive (sección 9)
 - [ ] **Fase 4:** IA (preguntas y lectura de sílabos)
 

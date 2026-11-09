@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
+import { recargarConexionGoogle, useConexionGoogle } from '../hooks/useConexionGoogle'
 import { invalidarEventosGoogle } from '../hooks/useGoogleEventos'
 import { useSeguimientoGoogle } from '../hooks/useSeguimientoGoogle'
 import {
@@ -7,6 +8,8 @@ import {
   obtenerConexionGoogle,
   pedirUrlConexionGoogle,
 } from '../lib/googleApi'
+import { pendientesParaSincronizar, sincronizarVarias } from '../lib/googleSync'
+import { listarPendientesSinGoogle } from '../lib/tasksApi'
 
 const MENSAJES_RETORNO = {
   ok: { tipo: 'ok', texto: 'Google se conectó correctamente.' },
@@ -18,6 +21,120 @@ const MENSAJES_RETORNO = {
 
 const BOTON_PRIMARIO =
   'rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60'
+
+// Pendientes de la app como eventos de Google (Parte C): el interruptor "Crear eventos en Google automáticamente"
+// (valor por defecto del formulario) y "Sincronizar mis pendientes existentes" (los futuros sin evento en Google).
+function AjustesSincronizacion() {
+  const google = useConexionGoogle()
+  const [ocupado, setOcupado] = useState(false)
+  const [progreso, setProgreso] = useState(null) // { hechos, fallidos, total } mientras sincroniza
+  const [mensaje, setMensaje] = useState(null) // { tipo: 'ok' | 'error', texto }
+
+  async function cambiarAutomatico(valor) {
+    setMensaje(null)
+    setOcupado(true)
+    try {
+      await google.cambiarSincronizar(valor)
+    } catch {
+      setMensaje({ tipo: 'error', texto: 'No se pudo guardar el cambio. Inténtalo de nuevo.' })
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  async function sincronizarExistentes() {
+    setMensaje(null)
+    setOcupado(true)
+    try {
+      const lista = pendientesParaSincronizar(await listarPendientesSinGoogle())
+      if (lista.length === 0) {
+        setMensaje({ tipo: 'ok', texto: 'No hay pendientes futuros por añadir: ya están todos en Google Calendar.' })
+        return
+      }
+      const n = lista.length
+      const ok = window.confirm(
+        `Se crearán ${n} ${n === 1 ? 'evento' : 'eventos'} en tu Google Calendar, uno por cada pendiente futuro sin completar. ¿Continuar?`,
+      )
+      if (!ok) return
+
+      setProgreso({ hechos: 0, fallidos: 0, total: n })
+      const { hechos, fallidos } = await sincronizarVarias(lista, (p) => setProgreso({ ...p, total: n }))
+      setMensaje(
+        fallidos === 0
+          ? { tipo: 'ok', texto: `Listo: ${hechos} ${hechos === 1 ? 'pendiente añadido' : 'pendientes añadidos'} a Google Calendar.` }
+          : {
+              tipo: 'error',
+              texto: `Se añadieron ${hechos} de ${n}. ${fallidos} no se pudieron añadir: puedes reintentarlos desde Pendientes.`,
+            },
+      )
+    } catch {
+      setMensaje({ tipo: 'error', texto: 'No se pudieron cargar tus pendientes. Inténtalo de nuevo.' })
+    } finally {
+      setProgreso(null)
+      setOcupado(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-4 border-t border-gray-200 pt-4 dark:border-gray-800">
+      <div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={google.sincronizar}
+            disabled={ocupado || google.cargando}
+            onChange={(e) => cambiarAutomatico(e.target.checked)}
+            className="size-4 accent-indigo-600"
+          />
+          Crear eventos en Google automáticamente
+        </label>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Tus entregas y actividades nuevas se añaden a tu Google Calendar. Puedes cambiarlo en cada pendiente con
+          «Añadir a Google Calendar».
+        </p>
+      </div>
+
+      <div>
+        <button
+          type="button"
+          onClick={sincronizarExistentes}
+          disabled={ocupado}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-100 disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-800"
+        >
+          {progreso ? `Sincronizando… ${progreso.hechos + progreso.fallidos} de ${progreso.total}` : 'Sincronizar mis pendientes existentes'}
+        </button>
+        {progreso && (
+          <div
+            role="progressbar"
+            aria-label="Progreso de la sincronización"
+            aria-valuemin={0}
+            aria-valuemax={progreso.total}
+            aria-valuenow={progreso.hechos + progreso.fallidos}
+            className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800"
+          >
+            <div
+              className="h-full bg-indigo-600 transition-[width]"
+              style={{ width: `${((progreso.hechos + progreso.fallidos) / progreso.total) * 100}%` }}
+            />
+          </div>
+        )}
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Añade a Google Calendar los pendientes futuros sin completar que aún no están allí.
+        </p>
+      </div>
+
+      {mensaje && (
+        <p
+          role={mensaje.tipo === 'error' ? 'alert' : 'status'}
+          className={`text-sm ${mensaje.tipo === 'error' ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400'}`}
+        >
+          {mensaje.texto}
+        </p>
+      )}
+    </div>
+  )
+}
 
 // Ajustes de cómo entran los eventos de Google a Hoy y Pendientes: el interruptor de "todo el día" y la lista
 // de lo que el usuario quitó (con "Volver a incluir").
@@ -143,6 +260,7 @@ export default function Conexiones() {
     try {
       await desconectarGoogle()
       invalidarEventosGoogle() // el calendario no debe seguir mostrando los eventos ya cargados
+      recargarConexionGoogle() // el formulario y las tarjetas dejan de ofrecer "Añadir a Google Calendar"
       setConexion({ conectado: false, email_google: null, estado: null })
     } catch {
       setError('No se pudo desconectar Google. Inténtalo de nuevo.')
@@ -190,8 +308,8 @@ export default function Conexiones() {
         </div>
 
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Tus eventos de Google Calendar entran solos a Hoy y Pendientes. Más adelante tus pendientes aparecerán en Calendar y podrás guardar archivos en
-          tu Drive.
+          Tus eventos de Google Calendar entran solos a Hoy y Pendientes, y tus pendientes pueden aparecer en Calendar.
+          Más adelante podrás guardar archivos en tu Drive.
         </p>
 
         {cargando && <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">Cargando…</p>}
@@ -235,6 +353,7 @@ export default function Conexiones() {
           </div>
         )}
 
+        {!cargando && conectado && <AjustesSincronizacion />}
         {!cargando && conexion?.conectado && <AjustesEventos seguimiento={seguimiento} />}
       </section>
     </>

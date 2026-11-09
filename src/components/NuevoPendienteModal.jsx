@@ -9,7 +9,7 @@ import PendienteForm from './PendienteForm'
 // Así cada vez que se abre, el formulario empieza de cero con sus valores iniciales.
 //
 //   valoresIniciales: ver PendienteForm
-//   onGuardar:        (campos) => Promise; el `crear` de useTasks
+//   onGuardar:        (campos, opciones) => Promise; el `crear` de useTasks
 //   onCerrar:         se llama al cerrar, ya sea por guardar o por cancelar
 //
 // Se cierra con la X, Esc, "Cancelar" o tocando afuera. Si ya se escribió algo, antes pide confirmación.

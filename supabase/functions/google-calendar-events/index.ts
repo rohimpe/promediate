@@ -12,12 +12,15 @@
 //
 // Nunca se registran tokens ni contenido de eventos: solo mensajes genéricos y códigos.
 import { corsHeaders, responderJson, responderPreflight } from '../_shared/cors.ts'
-import { ErrorGoogle, obtenerAccessToken, registrarFallo } from '../_shared/google.ts'
+import {
+  ErrorGoogle,
+  obtenerAccessToken,
+  ORIGEN_APP, // marca que google-calendar-sync (Parte C) pone en los eventos que crea esta app
+  registrarFallo,
+  SCOPE_CALENDAR,
+  URL_EVENTOS,
+} from '../_shared/google.ts'
 import { supabaseAdmin, usuarioDeLaPeticion } from '../_shared/supabaseAdmin.ts'
-
-const URL_EVENTOS = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
-const SCOPE_CALENDAR = 'https://www.googleapis.com/auth/calendar.events'
-const ORIGEN_APP = 'tablero-de-vida' // marca que la Parte C pondrá en los eventos que cree esta app
 
 const MAX_DIAS = 100
 const MS_POR_DIA = 86_400_000
