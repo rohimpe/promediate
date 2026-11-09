@@ -17,7 +17,7 @@ import { fechaEnLima, horaEnLima, sumarDias } from './fechas'
 //   id, origen: 'google', tipo: 'evento', googleId, serieId, titulo,
 //   inicio (Date), fin (Date | null), todoElDia,
 //   estado ('pendiente' | 'completada' | 'justificada'), justificacion,
-//   color         el elegido en la app (por ocurrencia o por serie, ver colorDeEvento), si no el de su colorId en
+//   color         el elegido en la app (por ocurrencia, serie o título, ver colorDeEvento), si no el de su colorId en
 //                 Google (las filas guardadas lo toman del evento si Google aún lo devuelve) y si no el azul por defecto
 //   guardado     true si tiene fila en la base de datos (false = pendiente virtual)
 //   soloGuardado  true si se muestra solo por su resumen guardado (Google no está disponible o ya
@@ -52,7 +52,7 @@ export function resumenDeEvento(x) {
 //   filas:   google_seguimiento (eventos marcados)
 //   ocultos: google_ocultos
 //   incluirTodoElDia: profiles.google_incluir_todo_el_dia
-//   colores: google_colores (colores propios de eventos y series)
+//   colores: google_colores (colores propios de eventos, series y títulos)
 export function armarReglas(filas, ocultos, incluirTodoElDia, colores = []) {
   return {
     porId: new Map(filas.map((f) => [f.google_event_id, f])),
@@ -61,18 +61,50 @@ export function armarReglas(filas, ocultos, incluirTodoElDia, colores = []) {
     incluirTodoElDia: !!incluirTodoElDia,
     coloresEventos: new Map(colores.filter((c) => c.google_event_id).map((c) => [c.google_event_id, c.color_id])),
     coloresSeries: new Map(colores.filter((c) => c.serie_id).map((c) => [c.serie_id, c.color_id])),
+    coloresTitulos: new Map(colores.filter((c) => c.titulo_norm).map((c) => [c.titulo_norm, c.color_id])),
   }
 }
 
-// Color propio (de la app) de un evento de Google: primero el de su ocurrencia y luego el de su serie.
-// Devuelve el colorId ('1'…'11') o null si el usuario no eligió ninguno.
+// Título para comparar eventos: minúsculas, sin espacios al inicio ni al final y sin tildes
+// ("  Cálculo II " → "calculo ii"). Es lo que se guarda en google_colores.titulo_norm.
+// Primero se quitan las tildes (NFD separa la letra de su acento) y después se pasa a minúsculas.
+export function normalizarTitulo(titulo) {
+  return (titulo ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+// A qué se aplica un color propio: solo esta ocurrencia, toda su serie o todos los eventos con su título.
+// Si el evento no puede usar el alcance pedido (no tiene serie, o su título queda vacío) se usa uno más chico.
+export function alcanceDeColor(x, alcance) {
+  if (alcance === 'titulo' && normalizarTitulo(x.titulo)) return 'titulo'
+  if (alcance === 'serie' && x.serieId) return 'serie'
+  return 'evento'
+}
+
+// Los colores propios guardados que le corresponden a un evento, uno por alcance (colorId o null).
+export function coloresGuardados(x, reglas) {
+  const titulo = normalizarTitulo(x.titulo)
+  return {
+    evento: reglas.coloresEventos.get(x.googleId) ?? null,
+    serie: (x.serieId && reglas.coloresSeries.get(x.serieId)) || null,
+    titulo: (titulo && reglas.coloresTitulos.get(titulo)) || null,
+  }
+}
+
+// Color propio (de la app) de un evento de Google: primero el de su ocurrencia, luego el de su serie y luego el
+// de su título. Devuelve el colorId ('1'…'11') o null si el usuario no eligió ninguno.
 export function colorIdPropio(x, reglas) {
-  return reglas.coloresEventos.get(x.googleId) ?? (x.serieId ? reglas.coloresSeries.get(x.serieId) : null) ?? null
+  const { evento, serie, titulo } = coloresGuardados(x, reglas)
+  return evento ?? serie ?? titulo ?? null
 }
 
 // Color con el que se pinta un evento de Google (del calendario o un item de Hoy/Pendientes). Prioridad:
 //   1. el de la app por ocurrencia (google_event_id)   2. el de la app por serie (serie_id)
-//   3. el colorId de Google (ya viene en `x.color`)    4. el azul por defecto (también en `x.color`)
+//   3. el de la app por título normalizado (titulo_norm)
+//   4. el colorId de Google (ya viene en `x.color`)    5. el azul por defecto (también en `x.color`)
 export function colorDeEvento(x, reglas) {
   const colorId = colorIdPropio(x, reglas)
   return colorId ? colorGoogle(colorId) : x.color

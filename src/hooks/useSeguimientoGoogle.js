@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { guardarIncluirTodoElDia, obtenerIncluirTodoElDia } from '../lib/profileApi'
-import { armarReglas, resumenDeEvento } from '../lib/seguimiento'
+import { alcanceDeColor, armarReglas, coloresGuardados, normalizarTitulo, resumenDeEvento } from '../lib/seguimiento'
 import {
   borrarColorEvento,
   borrarColorSerie,
+  borrarColorTitulo,
   borrarOculto,
   borrarSeguimiento,
   borrarSeguimientoDeSerie,
   guardarColorEvento,
   guardarColorSerie,
+  guardarColorTitulo,
   guardarSeguimiento,
   listarColores,
   listarOcultos,
@@ -23,6 +25,7 @@ import { useAuth } from './useAuth'
 // Todo se pide de una vez al montar: los colores no son una petición por evento.
 //   const seguimiento = useSeguimientoGoogle()
 //   seguimiento.filas, .ocultos, .colores   google_seguimiento (marcados), google_ocultos y google_colores
+//                                       (colores propios por evento, serie o título)
 //   seguimiento.reglas                  lo mismo indexado (ver armarReglas) para buscar rápido
 //   seguimiento.incluirTodoElDia        profiles.google_incluir_todo_el_dia
 //   seguimiento.cargando, .error
@@ -35,7 +38,8 @@ import { useAuth } from './useAuth'
 //   quitarSerie(x)          oculta toda la serie (y borra las marcas de sus ocurrencias)
 //   volverAIncluir(oculto)  borra la fila de google_ocultos
 //   cambiarIncluirTodoElDia(valor)
-//   cambiarColor(x, colorId, alcance)   color propio: alcance 'evento' (solo esta ocurrencia) o 'serie' (toda la serie)
+//   cambiarColor(x, colorId, alcance)   color propio: alcance 'evento' (solo esta ocurrencia), 'serie' (toda la
+//                                       serie) o 'titulo' (todos los eventos con este título normalizado)
 //   restablecerColor(x, alcance)        borra el color propio: vuelve al de Google
 export function useSeguimientoGoogle() {
   const { user } = useAuth()
@@ -122,35 +126,62 @@ export function useSeguimientoGoogle() {
     [userId],
   )
 
-  // El color de la ocurrencia manda sobre el de la serie. Por eso, al pintar una serie también se borra el color
-  // propio de ESTA ocurrencia (si no, seguiría con el suyo); y al restablecer una serie, igual. Las demás
-  // ocurrencias con color propio lo conservan (la base no sabe de qué serie son).
+  // Al pintar manda el color de la ocurrencia, luego el de la serie y luego el del título. Por eso, al pintar con
+  // un alcance más amplio también se borran los colores propios MÁS ESPECÍFICOS de ESTE evento (si no, seguiría
+  // con el suyo y no se vería el cambio): "serie" borra el de la ocurrencia; "título" borra el de la ocurrencia y
+  // el de su serie. Restablecer funciona igual. Las demás ocurrencias con color propio lo conservan (la base no
+  // sabe de qué serie o título son).
   const cambiarColor = useCallback(
     async (x, colorId, alcance) => {
-      const deSerie = alcance === 'serie' && !!x.serieId
-      const fila = deSerie ? await guardarColorSerie(x.serieId, colorId) : await guardarColorEvento(x.googleId, colorId)
-      const propioDeEvento = deSerie && colores.some((c) => c.google_event_id === x.googleId)
-      if (propioDeEvento) await borrarColorEvento(x.googleId)
+      const a = alcanceDeColor(x, alcance)
+      const titulo = normalizarTitulo(x.titulo)
+      const guardado = coloresGuardados(x, reglas)
+
+      let fila
+      if (a === 'titulo') fila = await guardarColorTitulo(titulo, colorId)
+      else if (a === 'serie') fila = await guardarColorSerie(x.serieId, colorId)
+      else fila = await guardarColorEvento(x.googleId, colorId)
+
+      const quitarEvento = a !== 'evento' && guardado.evento !== null
+      const quitarSerie = a === 'titulo' && guardado.serie !== null
+      if (quitarEvento) await borrarColorEvento(x.googleId)
+      if (quitarSerie) await borrarColorSerie(x.serieId)
       // El upsert actualiza la fila existente (mismo id), así que basta reemplazarla.
       setColores((actuales) => [
-        ...actuales.filter((c) => c.id !== fila.id && !(propioDeEvento && c.google_event_id === x.googleId)),
+        ...actuales.filter(
+          (c) =>
+            c.id !== fila.id &&
+            !(quitarEvento && c.google_event_id === x.googleId) &&
+            !(quitarSerie && c.serie_id === x.serieId),
+        ),
         fila,
       ])
     },
-    [colores],
+    [reglas],
   )
 
   const restablecerColor = useCallback(
     async (x, alcance) => {
-      const hayDeSerie = alcance === 'serie' && !!x.serieId && colores.some((c) => c.serie_id === x.serieId)
-      const hayDeEvento = colores.some((c) => c.google_event_id === x.googleId)
-      if (hayDeSerie) await borrarColorSerie(x.serieId)
-      if (hayDeEvento) await borrarColorEvento(x.googleId)
+      const a = alcanceDeColor(x, alcance)
+      const titulo = normalizarTitulo(x.titulo)
+      const guardado = coloresGuardados(x, reglas)
+
+      const quitarTitulo = a === 'titulo' && guardado.titulo !== null
+      const quitarSerie = a !== 'evento' && guardado.serie !== null
+      const quitarEvento = guardado.evento !== null
+      if (quitarTitulo) await borrarColorTitulo(titulo)
+      if (quitarSerie) await borrarColorSerie(x.serieId)
+      if (quitarEvento) await borrarColorEvento(x.googleId)
       setColores((actuales) =>
-        actuales.filter((c) => !(hayDeSerie && c.serie_id === x.serieId) && !(hayDeEvento && c.google_event_id === x.googleId)),
+        actuales.filter(
+          (c) =>
+            !(quitarTitulo && c.titulo_norm === titulo) &&
+            !(quitarSerie && c.serie_id === x.serieId) &&
+            !(quitarEvento && c.google_event_id === x.googleId),
+        ),
       )
     },
-    [colores],
+    [reglas],
   )
 
   return {

@@ -73,7 +73,7 @@ export async function borrarOculto(id) {
   if (error) throw registrarError(error)
 }
 
-// --- google_colores: colores propios de eventos y series (Google no devuelve los personalizados) ---
+// --- google_colores: colores propios de eventos, series y títulos (Google no devuelve los personalizados) ---
 
 export async function listarColores() {
   const { data, error } = await supabase.from('google_colores').select('*')
@@ -103,6 +103,17 @@ export async function guardarColorSerie(serieId, colorId) {
   return data
 }
 
+// Pinta todos los eventos con el mismo título. `tituloNorm` viene de normalizarTitulo (seguimiento.js).
+export async function guardarColorTitulo(tituloNorm, colorId) {
+  const { data, error } = await supabase
+    .from('google_colores')
+    .upsert({ titulo_norm: tituloNorm, color_id: colorId }, { onConflict: 'user_id,titulo_norm' })
+    .select()
+    .single()
+  if (error) throw registrarError(error)
+  return data
+}
+
 // Restablecer: borra la fila y el evento vuelve a su color de Google.
 export async function borrarColorEvento(googleId) {
   const { error } = await supabase.from('google_colores').delete().eq('google_event_id', googleId)
@@ -111,5 +122,10 @@ export async function borrarColorEvento(googleId) {
 
 export async function borrarColorSerie(serieId) {
   const { error } = await supabase.from('google_colores').delete().eq('serie_id', serieId)
+  if (error) throw registrarError(error)
+}
+
+export async function borrarColorTitulo(tituloNorm) {
+  const { error } = await supabase.from('google_colores').delete().eq('titulo_norm', tituloNorm)
   if (error) throw registrarError(error)
 }

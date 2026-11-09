@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { PALETA_GOOGLE } from '../../lib/calendario'
-import { colorIdPropio } from '../../lib/seguimiento'
+import { alcanceDeColor, colorIdPropio, coloresGuardados } from '../../lib/seguimiento'
 
 const BOTON =
   'rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-800'
@@ -10,20 +10,36 @@ const BOTON =
 //   evento:       evento del calendario (origen 'google'); trae googleId y serieId
 //   seguimiento:  lo que devuelve useSeguimientoGoogle() (reglas, cambiarColor, restablecerColor)
 //
-// Si el evento es de una serie, se pregunta si el color es "solo este evento" o "toda la serie" (por defecto,
-// toda la serie). "Restablecer" borra el color propio y el evento vuelve al de Google.
+// Se pregunta a qué se aplica el color: "Solo este evento", "Toda la serie" (si es de una serie) y "Todos los
+// eventos con este título" (por defecto). "Restablecer" borra el color propio y el evento vuelve al de Google.
+//
+// Solo se marca un color como elegido, y solo se escribe la nota, si el color viene de uno GUARDADO (google_colores).
+// Si el evento se ve con el color de Google o el azul por defecto, no hay nada marcado ni nota y "Restablecer"
+// queda deshabilitado.
 export default function ColorEventoGoogle({ evento, seguimiento }) {
   const uid = useId()
   const { reglas } = seguimiento
-  const [alcance, setAlcance] = useState(evento.serieId ? 'serie' : 'evento')
+  const [alcance, setAlcance] = useState(() => alcanceDeColor(evento, 'titulo'))
   const [ocupado, setOcupado] = useState(false)
   const [error, setError] = useState('')
 
-  const propioDeEvento = reglas.coloresEventos.has(evento.googleId)
-  const propioDeSerie = !!evento.serieId && reglas.coloresSeries.has(evento.serieId)
+  const guardado = coloresGuardados(evento, reglas)
   const elegido = colorIdPropio(evento, reglas)
-  // Restablecer "toda la serie" también quita el color propio de esta ocurrencia; "solo este evento", solo ese.
-  const hayQueRestablecer = alcance === 'serie' ? propioDeEvento || propioDeSerie : propioDeEvento
+  // Restablecer quita el color del alcance elegido y los más específicos de este evento (igual que al pintar).
+  const hayQueRestablecer =
+    alcance === 'titulo'
+      ? !!(guardado.evento || guardado.serie || guardado.titulo)
+      : alcance === 'serie'
+        ? !!(guardado.evento || guardado.serie)
+        : !!guardado.evento
+
+  const opciones = [
+    { valor: 'evento', texto: 'Solo este evento' },
+    ...(alcanceDeColor(evento, 'serie') === 'serie' ? [{ valor: 'serie', texto: 'Toda la serie' }] : []),
+    ...(alcanceDeColor(evento, 'titulo') === 'titulo'
+      ? [{ valor: 'titulo', texto: 'Todos los eventos con este título' }]
+      : []),
+  ]
 
   async function ejecutar(accion) {
     setError('')
@@ -37,9 +53,10 @@ export default function ColorEventoGoogle({ evento, seguimiento }) {
     }
   }
 
-  let nota = 'Usa el color de Google.'
-  if (propioDeEvento) nota = 'Este evento tiene un color propio.'
-  else if (propioDeSerie) nota = 'Toda la serie usa este color.'
+  let nota = null
+  if (guardado.evento) nota = 'Este evento tiene un color propio.'
+  else if (guardado.serie) nota = 'Toda la serie usa este color.'
+  else if (guardado.titulo) nota = 'Todos los eventos con este título usan este color.'
 
   return (
     <div className="mt-4 space-y-2 border-t border-gray-200 pt-3 dark:border-gray-800">
@@ -67,13 +84,10 @@ export default function ColorEventoGoogle({ evento, seguimiento }) {
           ))}
         </div>
 
-        {evento.serieId && (
-          <div role="radiogroup" aria-label="¿Solo este evento o toda la serie?" className="space-y-1 text-sm">
-            <p className="font-medium">¿Solo este evento o toda la serie?</p>
-            {[
-              { valor: 'serie', texto: 'Toda la serie' },
-              { valor: 'evento', texto: 'Solo este evento' },
-            ].map((o) => (
+        {opciones.length > 1 && (
+          <div role="radiogroup" aria-label="¿A qué eventos se aplica el color?" className="space-y-1 text-sm">
+            <p className="font-medium">¿A qué eventos se aplica el color?</p>
+            {opciones.map((o) => (
               <label key={o.valor} className="flex cursor-pointer items-center gap-2">
                 <input
                   type="radio"
@@ -99,7 +113,7 @@ export default function ColorEventoGoogle({ evento, seguimiento }) {
         >
           Restablecer
         </button>
-        <p className="text-sm text-gray-600 dark:text-gray-400">{nota}</p>
+        {nota && <p className="text-sm text-gray-600 dark:text-gray-400">{nota}</p>}
       </div>
 
       {error && (
