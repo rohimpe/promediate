@@ -5,6 +5,8 @@ import TarjetaProximas from '../components/inicio/TarjetaProximas'
 import { useAuth } from '../hooks/useAuth'
 import { useCursosConNotas } from '../hooks/useCursosConNotas'
 import { useNombrePerfil } from '../hooks/useNombrePerfil'
+import { useSeguidosGoogle } from '../hooks/useSeguidosGoogle'
+import { useSeguimientoGoogle } from '../hooks/useSeguimientoGoogle'
 import { useTasks } from '../hooks/useTasks'
 import { formatearDiaLargo, hoyEnLima } from '../lib/fechas'
 import { nombreParaSaludo } from '../lib/inicio'
@@ -19,8 +21,10 @@ export default function Inicio() {
   const { tareas, cargando, error, cambiar, crear } = useTasks()
   const cursos = useCursosConNotas()
   const perfil = useNombrePerfil(user?.id)
+  const seguimiento = useSeguimientoGoogle() // lo que se sigue de Google: lo comparten la tarjeta Hoy y el calendario
 
   const hoy = hoyEnLima()
+  const seguidosDeHoy = useSeguidosGoogle(seguimiento, { desde: hoy, hasta: hoy })
   const nombre = nombreParaSaludo(perfil.nombre, user?.email)
 
   return (
@@ -36,13 +40,21 @@ export default function Inicio() {
           La última fila (1fr) absorbe el alto sobrante para que no se abran huecos entre tarjetas. */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-rows-[auto_auto_1fr] lg:items-start">
         <div className="lg:col-start-2">
-          <TarjetaHoy tareas={tareas} cargando={cargando} error={error} cambiar={cambiar} hoy={hoy} />
+          <TarjetaHoy
+            tareas={tareas}
+            seguidos={seguidosDeHoy.seguidos}
+            seguimiento={seguimiento}
+            cargando={cargando || seguidosDeHoy.cargando}
+            error={error}
+            cambiar={cambiar}
+            hoy={hoy}
+          />
         </div>
         <div className="lg:col-start-2">
           <TarjetaProximas tareas={tareas} cargando={cargando} error={error} hoy={hoy} />
         </div>
         <div className="lg:col-start-1 lg:row-span-3 lg:row-start-1">
-          <CalendarioInicio tareas={tareas} cambiar={cambiar} crear={crear} />
+          <CalendarioInicio tareas={tareas} cambiar={cambiar} crear={crear} seguimiento={seguimiento} />
         </div>
         <div className="lg:col-start-2">
           <TarjetaPromedios cursos={cursos.cursos} cargando={cursos.cargando} error={cursos.error} />

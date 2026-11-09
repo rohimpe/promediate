@@ -27,8 +27,11 @@ import { HORA_ENTREGA_POR_DEFECTO } from './tipos'
 //   curso       nombre del curso o null (solo informativo)
 //
 // Solo los eventos de Google traen además:
+//   googleId    id de la ocurrencia en Google
+//   serieId     id de la serie repetitiva o null
 //   lugar       texto o null
 //   enlace      dirección https de Google Calendar o null
+//   seguido     true si el usuario lo sigue (ver seguimiento.js); entonces `estado` es el de su seguimiento
 // ---------------------------------------------------------------------
 
 // Color fijo de las actividades (las entregas usan el color de su curso).
@@ -98,6 +101,8 @@ export function googleAEventos(lista) {
 
   for (const g of lista) {
     const comun = {
+      googleId: g.id, // id de la ocurrencia en Google (el `id` del evento normalizado lleva prefijo y, a veces, el día)
+      serieId: g.serieId ?? null, // id de la serie repetitiva, o null si es un evento suelto
       titulo: g.titulo,
       todoElDia: g.todoElDia,
       tipo: 'evento',

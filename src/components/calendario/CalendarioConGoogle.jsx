@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useGoogleEventos } from '../../hooks/useGoogleEventos'
 import { useMostrarGoogle } from '../../hooks/useMostrarGoogle'
 import { tareasAEventos } from '../../lib/calendario'
+import { conSeguimiento } from '../../lib/seguimiento'
 import NuevoPendienteModal from '../NuevoPendienteModal'
 import { IconoGoogle } from './BloqueEvento'
 import CalendarView from './CalendarView'
@@ -67,8 +68,10 @@ function AvisoGoogle({ estado, error, truncado }) {
 // Maneja el interruptor «Mostrar Google Calendar», los avisos, el panel de detalles y el modal para crear.
 //
 //   tareas, cambiar, crear:  los de useTasks
+//   seguimiento:  el de useSeguimientoGoogle (la página lo crea una vez y lo comparte con Hoy, etc.).
+//                 Los eventos de Google que se siguen muestran su estado y se pueden marcar en el panel.
 //   El resto de las propiedades (vistas, vistaInicial, alturaMaxima…) van directo a <CalendarView>.
-export default function CalendarioConGoogle({ tareas, cambiar, crear, ...propsCalendario }) {
+export default function CalendarioConGoogle({ tareas, cambiar, crear, seguimiento, ...propsCalendario }) {
   const [mostrar, setMostrar] = useMostrarGoogle()
   const [rango, setRango] = useState(null) // días visibles, lo informa <CalendarView>
   const google = useGoogleEventos(rango, mostrar)
@@ -76,7 +79,12 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, ...propsCa
   const [nuevo, setNuevo] = useState(null) // valores iniciales del modal "Nuevo pendiente" (null = cerrado)
 
   const eventosApp = useMemo(() => tareasAEventos(tareas), [tareas])
-  const eventos = useMemo(() => [...eventosApp, ...google.eventos], [eventosApp, google.eventos])
+  // Los eventos de Google que se siguen llevan el estado de su seguimiento (completada, justificada…).
+  const eventosGoogle = useMemo(
+    () => google.eventos.map((e) => conSeguimiento(e, seguimiento.porId, seguimiento.seriesSeguidas)),
+    [google.eventos, seguimiento.porId, seguimiento.seriesSeguidas],
+  )
+  const eventos = useMemo(() => [...eventosApp, ...eventosGoogle], [eventosApp, eventosGoogle])
 
   // Se busca por id en cada render para que el panel refleje los cambios (completar, deshacer…).
   const evento = eventos.find((e) => e.id === seleccionado)
@@ -128,6 +136,7 @@ export default function CalendarioConGoogle({ tareas, cambiar, crear, ...propsCa
           evento={evento}
           tarea={tarea}
           cambiar={cambiar}
+          seguimiento={seguimiento}
           onCerrar={() => setSeleccionado(null)}
         />
       )}

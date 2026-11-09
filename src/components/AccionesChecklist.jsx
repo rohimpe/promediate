@@ -3,7 +3,14 @@ import { useState } from 'react'
 // Botones de una tarjeta del checklist: Completar / Justificar / Deshacer.
 //   onCompletar(), onJustificar(motivo), onDeshacer(): funciones async de la página;
 //   si fallan lanzan un error y aquí mostramos el aviso.
-export default function AccionesChecklist({ tarea, onCompletar, onJustificar, onDeshacer }) {
+//   textoCompletar: texto del botón verde (los eventos de Google seguidos usan "✓ Fui").
+export default function AccionesChecklist({
+  tarea,
+  onCompletar,
+  onJustificar,
+  onDeshacer,
+  textoCompletar = '✓ Completar',
+}) {
   const [justificando, setJustificando] = useState(false)
   const [motivo, setMotivo] = useState('')
   const [ocupado, setOcupado] = useState(false)
@@ -89,7 +96,7 @@ export default function AccionesChecklist({ tarea, onCompletar, onJustificar, on
           onClick={() => ejecutar(onCompletar)}
           className="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
         >
-          ✓ Completar
+          {textoCompletar}
         </button>
         <button disabled={ocupado} onClick={() => setJustificando(true)} className={boton}>
           Justificar

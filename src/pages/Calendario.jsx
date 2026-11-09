@@ -1,9 +1,12 @@
 import CalendarioConGoogle from '../components/calendario/CalendarioConGoogle'
+import { useSeguimientoGoogle } from '../hooks/useSeguimientoGoogle'
 import { useTasks } from '../hooks/useTasks'
 
-// Página "Calendario": le pasa los pendientes al calendario, que además mezcla los eventos de Google.
+// Página "Calendario": le pasa los pendientes al calendario, que además mezcla los eventos de Google
+// (y permite seguirlos para marcarlos).
 export default function Calendario() {
   const { tareas, cargando, error, cambiar, crear } = useTasks()
+  const seguimiento = useSeguimientoGoogle()
 
   return (
     <>
@@ -16,7 +19,7 @@ export default function Calendario() {
         </p>
       )}
 
-      <CalendarioConGoogle tareas={tareas} cambiar={cambiar} crear={crear} />
+      <CalendarioConGoogle tareas={tareas} cambiar={cambiar} crear={crear} seguimiento={seguimiento} />
     </>
   )
 }
