@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Fase 3, parte D: archivos en el Google Drive del usuario.
 -- =====================================================================
--- Cada curso tiene su carpeta dentro de una carpeta raíz "Tablero de Vida" en el Drive del usuario. Los archivos
+-- Cada curso tiene su carpeta dentro de una carpeta raíz "Promediate" en el Drive del usuario. Los archivos
 -- se suben directo del navegador a Google (subida reanudable que inicia la Edge Function google-drive-upload-init)
 -- y google-drive-register guarda aquí su fila con los metadatos REALES que devuelve Drive.
 --
@@ -16,7 +16,7 @@
 
 -- ---------------------------------------------------------------------
 -- 1. Ids de las carpetas en Drive (los rellenan las Edge Functions la primera vez que se sube algo).
---   profiles.drive_root_folder_id  carpeta "Tablero de Vida"
+--   profiles.drive_root_folder_id  carpeta raíz "Promediate" (NOMBRE_CARPETA_RAIZ en _shared/drive.ts)
 --   courses.drive_folder_id        carpeta del curso, dentro de la raíz
 -- Si el usuario borra una carpeta en Drive, la función la vuelve a crear y actualiza el id.
 -- Las columnas nuevas quedan cubiertas por las políticas que ya tienen profiles y courses.

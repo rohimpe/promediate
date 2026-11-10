@@ -1,5 +1,5 @@
 // Lo que comparten las funciones de Google Drive (Parte D): validar archivos, preparar el access token,
-// llamar a la API de Drive y asegurar las carpetas "Tablero de Vida" / <curso>.
+// llamar a la API de Drive y asegurar las carpetas NOMBRE_CARPETA_RAIZ / <curso>.
 //
 // Nunca se registran tokens ni nombres de archivos: solo mensajes genéricos y códigos.
 import {
@@ -25,8 +25,8 @@ export const ID_DRIVE = /^[A-Za-z0-9_-]{10,200}$/
 
 // ---------------------------------------------------------------------
 // Validación de archivos (la misma lista está en src/lib/archivos.js, que solo sirve para avisar antes).
+// El tope de tamaño NO está aquí: es MAX_TAMANO_ARCHIVO, en google-drive-upload-init.
 // ---------------------------------------------------------------------
-export const TAMANO_MAXIMO = 25 * 1024 * 1024 // 25 MB
 export const LARGO_MAXIMO_NOMBRE = 200
 const EXTENSIONES_BLOQUEADAS = ['exe', 'bat', 'cmd', 'msi', 'scr', 'js', 'vbs', 'sh']
 const MIME_BLOQUEADOS = [
@@ -57,11 +57,10 @@ function extension(nombre: string): string {
   return /\.([^.]+)$/.exec(limpio)?.[1] ?? ''
 }
 
-// Motivo por el que el archivo no se acepta, o null si está bien.
-export function motivoRechazo(nombre: string, mime: string, tamano: number): EstadoDrive | null {
+// Motivo por el que el tipo de archivo no se acepta (programas y scripts), o null si está bien.
+export function motivoRechazo(nombre: string, mime: string): EstadoDrive | null {
   if (EXTENSIONES_BLOQUEADAS.includes(extension(nombre))) return 'tipo_no_permitido'
   if (MIME_BLOQUEADOS.includes(mime.toLowerCase().split(';')[0].trim())) return 'tipo_no_permitido'
-  if (tamano > TAMANO_MAXIMO) return 'demasiado_grande'
   return null
 }
 
@@ -148,22 +147,33 @@ export async function prepararDrive(userId: string, contexto: string): Promise<{
 }
 
 // ---------------------------------------------------------------------
-// Carpetas: "Tablero de Vida" (raíz, en profiles.drive_root_folder_id) y una por curso (courses.drive_folder_id)
+// Carpetas: NOMBRE_CARPETA_RAIZ (raíz, en profiles.drive_root_folder_id) y una por curso (courses.drive_folder_id).
+// Las carpetas se encuentran SIEMPRE por los ids guardados, nunca buscando por nombre.
 // ---------------------------------------------------------------------
 const MIME_CARPETA = 'application/vnd.google-apps.folder'
-const NOMBRE_RAIZ = 'Tablero de Vida'
+// Nombre de la carpeta raíz en el Drive del usuario. Si cambia, las carpetas que ya existen se renombran solas en
+// la siguiente subida (ver asegurarCarpetaCurso).
+export const NOMBRE_CARPETA_RAIZ = 'Promediate'
 
-const urlArchivo = (id: string, campos: string) => `${URL_DRIVE_ARCHIVOS}/${encodeURIComponent(id)}?fields=${campos}`
+const urlArchivo = (id: string, campos = '') =>
+  `${URL_DRIVE_ARCHIVOS}/${encodeURIComponent(id)}${campos ? `?fields=${campos}` : ''}`
 
-// ¿La carpeta sigue existiendo (y, si se pide, dentro de `padre`)? 404, en la papelera (trashed también es true
-// si se borró la carpeta que la contiene) o movida a otro sitio cuentan como "no".
-async function carpetaVigente(token: string, id: string, padre?: string): Promise<boolean> {
-  const r = await llamarDrive(token, 'GET', urlArchivo(id, 'id,mimeType,trashed,parents'))
-  if (r.status === 404) return false
+interface Carpeta {
+  nombre: string
+  padres: string[]
+}
+
+// Lee una carpeta guardada (files.get). Devuelve null si ya no sirve: 404, en la papelera (trashed también es true
+// si se borró la carpeta que la contiene) o no es una carpeta.
+async function leerCarpeta(token: string, id: string): Promise<Carpeta | null> {
+  const r = await llamarDrive(token, 'GET', urlArchivo(id, 'id,name,mimeType,trashed,parents'))
+  if (r.status === 404) return null
   if (!exito(r)) throw new FalloDrive(r)
-  if (r.datos.trashed === true || r.datos.mimeType !== MIME_CARPETA) return false
-  const padres = Array.isArray(r.datos.parents) ? r.datos.parents : []
-  return !padre || padres.includes(padre)
+  if (r.datos.trashed === true || r.datos.mimeType !== MIME_CARPETA) return null
+  return {
+    nombre: typeof r.datos.name === 'string' ? r.datos.name : '',
+    padres: Array.isArray(r.datos.parents) ? r.datos.parents : [],
+  }
 }
 
 async function crearCarpeta(token: string, nombre: string, padre?: string): Promise<string> {
@@ -172,6 +182,17 @@ async function crearCarpeta(token: string, nombre: string, padre?: string): Prom
   })
   if (!exito(r) || typeof r.datos.id !== 'string') throw new FalloDrive(r)
   return r.datos.id
+}
+
+// Renombra una carpeta (files.update). Es solo estético: si falla, se registra y la subida sigue (se vuelve a
+// intentar en la próxima).
+async function renombrarCarpeta(token: string, id: string, nombre: string): Promise<void> {
+  try {
+    const r = await llamarDrive(token, 'PATCH', urlArchivo(id, 'id'), { cuerpo: { name: nombre } })
+    if (!exito(r)) registrarFallo('drive: renombrar carpeta raíz', `${r.status} ${r.motivo}`.trim())
+  } catch {
+    registrarFallo('drive: renombrar carpeta raíz')
+  }
 }
 
 // Guarda el id de una carpeta nueva solo si nadie lo cambió mientras tanto (dos subidas a la vez desde dos pestañas).
@@ -199,7 +220,7 @@ async function guardarCarpeta(
   const { data: fila } = await lectura.maybeSingle()
   const ganador = (fila as Record<string, string | null> | null)?.[columna] ?? null
   if (!ganador || ganador === nueva) return nueva
-  await llamarDrive(token, 'DELETE', `${URL_DRIVE_ARCHIVOS}/${encodeURIComponent(nueva)}`).catch(() => {})
+  await llamarDrive(token, 'DELETE', urlArchivo(nueva)).catch(() => {})
   return ganador
 }
 
@@ -216,7 +237,9 @@ export interface CursoConCarpeta {
 }
 
 // Devuelve el id de la carpeta del curso en Drive, creando la raíz y la carpeta si no existen (o si el usuario las
-// borró) y guardando los ids nuevos. Lanza FalloDrive si Google responde algo inesperado.
+// borró) y guardando los ids nuevos. Si la raíz guardada tiene otro nombre (p. ej. una creada con un nombre
+// anterior), la renombra a NOMBRE_CARPETA_RAIZ en vez de crear otra. Lanza FalloDrive si Google responde algo
+// inesperado.
 export async function asegurarCarpetaCurso(token: string, userId: string, curso: CursoConCarpeta): Promise<string> {
   const { data: perfil, error } = await supabaseAdmin
     .from('profiles')
@@ -227,20 +250,28 @@ export async function asegurarCarpetaCurso(token: string, userId: string, curso:
     registrarFallo('drive: leer perfil', error.code)
     throw new Error('base de datos')
   }
-  let raiz: string | null = perfil?.drive_root_folder_id ?? null
+  const raizGuardada: string | null = perfil?.drive_root_folder_id ?? null
 
-  // Lo normal: la carpeta del curso existe dentro de la raíz guardada (una sola llamada a Google).
-  if (raiz && curso.drive_folder_id && (await carpetaVigente(token, curso.drive_folder_id, raiz))) {
-    return curso.drive_folder_id
+  // Las dos carpetas guardadas se leen a la vez (lo normal: dos llamadas en paralelo y nada más).
+  const [infoRaiz, infoCurso] = await Promise.all([
+    raizGuardada ? leerCarpeta(token, raizGuardada) : null,
+    raizGuardada && curso.drive_folder_id ? leerCarpeta(token, curso.drive_folder_id) : null,
+  ])
+
+  let raiz: string
+  if (raizGuardada && infoRaiz) {
+    raiz = raizGuardada
+    if (infoRaiz.nombre !== NOMBRE_CARPETA_RAIZ) await renombrarCarpeta(token, raiz, NOMBRE_CARPETA_RAIZ)
+  } else {
+    // No hay raíz guardada, o el usuario la borró (404 / papelera): se crea otra y se guarda su id.
+    const nueva = await crearCarpeta(token, NOMBRE_CARPETA_RAIZ)
+    raiz = await guardarCarpeta(token, 'profiles', { id: userId }, 'drive_root_folder_id', raizGuardada, nueva)
   }
 
-  if (!raiz || !(await carpetaVigente(token, raiz))) {
-    const nueva = await crearCarpeta(token, NOMBRE_RAIZ)
-    raiz = await guardarCarpeta(token, 'profiles', { id: userId }, 'drive_root_folder_id', raiz, nueva)
-  }
-
+  // La carpeta del curso sirve si existe y está dentro de la raíz que se usa ahora.
   let carpeta = curso.drive_folder_id
-  if (!carpeta || !(await carpetaVigente(token, carpeta, raiz))) {
+  const cursoVigente = raiz === raizGuardada && infoCurso !== null && infoCurso.padres.includes(raiz)
+  if (!carpeta || !cursoVigente) {
     const nueva = await crearCarpeta(token, nombreCarpeta(curso.nombre), raiz)
     carpeta = await guardarCarpeta(
       token,

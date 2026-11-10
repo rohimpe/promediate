@@ -7,7 +7,8 @@
 //
 // No se confía en nada de lo que diga el cliente sobre el archivo: el nombre, el tipo, el tamaño y el enlace se le
 // piden a Drive con el token del usuario, y se comprueba que el archivo está en la carpeta de ESE curso. Si aun así
-// no cumple las reglas (tamaño o tipo), se borra de Drive y no se registra.
+// su tipo no está permitido, se borra de Drive y no se registra. El tamaño no se vuelve a comprobar: lo fija la
+// sesión de subida que creó google-drive-upload-init (X-Upload-Content-Length, con su MAX_TAMANO_ARCHIVO).
 //
 // Nunca se registran tokens ni nombres de archivos: solo mensajes genéricos y códigos.
 import { corsHeaders, responderJson, responderPreflight } from '../_shared/cors.ts'
@@ -98,7 +99,7 @@ Deno.serve(async (req) => {
     const tamano = typeof archivo.size === 'string' && /^\d+$/.test(archivo.size) ? Number(archivo.size) : null
     const enlace = typeof archivo.webViewLink === 'string' ? archivo.webViewLink.slice(0, 2000) : null
 
-    const rechazo = nombre ? motivoRechazo(nombre, mime, tamano ?? 0) : 'error'
+    const rechazo = nombre ? motivoRechazo(nombre, mime) : 'error'
     if (rechazo) {
       // No cumple las reglas aunque pasó la validación inicial: se borra de Drive y no se registra.
       await llamarDrive(google.token, 'DELETE', `${URL_DRIVE_ARCHIVOS}/${encodeURIComponent(driveFileId)}`).catch(

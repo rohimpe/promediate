@@ -2,9 +2,12 @@
 //
 // La validación de verdad la hacen las Edge Functions (google-drive-upload-init y google-drive-register); esta copia
 // solo sirve para avisar antes de empezar a subir. Si cambias las reglas, cámbialas también en
-// supabase/functions/_shared/drive.ts.
+// supabase/functions/_shared/drive.ts (tipos) y en google-drive-upload-init (tamaño).
 
-export const TAMANO_MAXIMO = 25 * 1024 * 1024 // 25 MB
+// Copia del tope de la Edge Function (MAX_TAMANO_ARCHIVO en google-drive-upload-init), que es la que manda.
+// Es el único lugar del frontend con este número: los textos se arman a partir de él.
+export const MAX_TAMANO_ARCHIVO = 100 * 1024 * 1024 // 100 MB
+export const TEXTO_TAMANO_MAXIMO = `${MAX_TAMANO_ARCHIVO / (1024 * 1024)} MB`
 const EXTENSIONES_BLOQUEADAS = ['exe', 'bat', 'cmd', 'msi', 'scr', 'js', 'vbs', 'sh']
 
 // Estados en los que Google no se puede usar: la página invita a ir a Conexiones.
@@ -15,7 +18,7 @@ export const MENSAJES_ARCHIVO = {
   no_conectado: 'Google no está conectado. Conéctalo en Conexiones.',
   reconectar: 'Google pide volver a conectar tu cuenta en Conexiones.',
   permisos_incompletos: 'Falta el permiso de Google Drive. Vuelve a conectar Google en Conexiones.',
-  demasiado_grande: 'Es muy grande: el máximo es 25 MB.',
+  demasiado_grande: `Es muy grande: el máximo es ${TEXTO_TAMANO_MAXIMO}.`,
   tipo_no_permitido: 'Ese tipo de archivo no está permitido (programas y scripts).',
   sin_conexion: 'Sin conexión a internet. Revisa tu conexión e inténtalo de nuevo.',
   sin_respuesta: 'No se pudo enviar el archivo a Google. Revisa tu conexión e inténtalo de nuevo.',
@@ -31,7 +34,7 @@ function extension(nombre) {
 // Motivo por el que no se puede subir un archivo del navegador (File), o null si está bien.
 export function validarArchivoLocal(archivo) {
   if (EXTENSIONES_BLOQUEADAS.includes(extension(archivo.name))) return 'tipo_no_permitido'
-  if (archivo.size > TAMANO_MAXIMO) return 'demasiado_grande'
+  if (archivo.size > MAX_TAMANO_ARCHIVO) return 'demasiado_grande'
   return null
 }
 

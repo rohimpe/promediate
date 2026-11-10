@@ -5,7 +5,7 @@ import BotonSubir from '../components/archivos/BotonSubir'
 import ListaArchivos from '../components/archivos/ListaArchivos'
 import ProgresoSubidas from '../components/archivos/ProgresoSubidas'
 import { useEstadoDrive, useSubidas } from '../hooks/useSubidas'
-import { enlaceCarpetaDrive } from '../lib/archivos'
+import { enlaceCarpetaDrive, TEXTO_TAMANO_MAXIMO } from '../lib/archivos'
 import { listarArchivos, obtenerCursoConCarpeta } from '../lib/archivosApi'
 
 // Archivos de un curso: la lista (de la base, sin consultar Drive) y "Subir archivo" con progreso por archivo.
@@ -90,7 +90,7 @@ export default function ArchivosCurso() {
       </div>
       {puedeSubir && (
         <p className="-mt-2 mb-4 text-xs text-gray-600 dark:text-gray-400">
-          Máximo 25 MB por archivo. No se permiten programas ni scripts (.exe, .bat, .js…).
+          Máximo {TEXTO_TAMANO_MAXIMO} por archivo. No se permiten programas ni scripts (.exe, .bat, .js…).
         </p>
       )}
 

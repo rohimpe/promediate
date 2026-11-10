@@ -33,6 +33,11 @@ import { usuarioDeLaPeticion } from '../_shared/supabaseAdmin.ts'
 const CONTEXTO = 'google-drive-upload-init'
 const MIME_GENERICO = 'application/octet-stream'
 
+// Tope de tamaño de un archivo: el ÚNICO del backend. La sesión de subida fija la cantidad de bytes
+// (X-Upload-Content-Length), así que en Drive nunca puede quedar un archivo más grande que lo aprobado aquí.
+// El frontend tiene su copia en src/lib/archivos.js (solo para avisar antes de subir): si cambias uno, cambia el otro.
+const MAX_TAMANO_ARCHIVO = 100 * 1024 * 1024 // 100 MB
+
 function leerPeticion(cuerpo: unknown) {
   if (typeof cuerpo !== 'object' || cuerpo === null) return null
   const { course_id, nombre, mime_type, tamano } = cuerpo as Record<string, unknown>
@@ -59,7 +64,7 @@ Deno.serve(async (req) => {
     const { cursoId, nombre, mime, tamano } = peticion
 
     // Se valida antes de tocar Google: así un archivo rechazado no crea carpetas.
-    const rechazo = motivoRechazo(nombre, mime, tamano)
+    const rechazo = motivoRechazo(nombre, mime) ?? (tamano > MAX_TAMANO_ARCHIVO ? 'demasiado_grande' : null)
     if (rechazo) return responderJson(req, { estado: rechazo })
 
     const curso = await cursoDelUsuario(userId, cursoId, CONTEXTO)
