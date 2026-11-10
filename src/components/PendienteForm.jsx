@@ -7,6 +7,7 @@ import { aInputDatetime, deInputDatetime } from '../lib/fechas'
 import { estaEnGoogle } from '../lib/googleSync'
 import { HORA_ENTREGA_POR_DEFECTO, recortarHora } from '../lib/tipos'
 import AdvertenciaChoques from './AdvertenciaChoques'
+import AdjuntosEntrega from './archivos/AdjuntosEntrega'
 import { Atajos, AtajosFecha } from './Atajos'
 import { IconoGoogle } from './calendario/BloqueEvento'
 import CampoSelect from './CampoSelect'
@@ -246,6 +247,9 @@ export default function PendienteForm({ inicial, valoresIniciales, onGuardar, on
           Añadir a Google Calendar
         </label>
       )}
+
+      {/* Adjuntos: solo al editar una entrega (una nueva aún no tiene id). Van a la carpeta del curso elegido arriba. */}
+      {inicial?.id && esEntrega && <AdjuntosEntrega tarea={inicial} cursoId={cursoId} />}
 
       {error && (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">

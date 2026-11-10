@@ -11,6 +11,11 @@ export const SCOPE_CALENDAR = 'https://www.googleapis.com/auth/calendar.events'
 // Marca (extendedProperties.private.origen) de los eventos que crea esta app en Google Calendar.
 export const ORIGEN_APP = 'tablero-de-vida'
 
+// Drive (Parte D). Con drive.file la app solo ve los archivos y carpetas que ella misma creó.
+export const SCOPE_DRIVE = 'https://www.googleapis.com/auth/drive.file'
+export const URL_DRIVE_ARCHIVOS = 'https://www.googleapis.com/drive/v3/files'
+export const URL_DRIVE_SUBIDA = 'https://www.googleapis.com/upload/drive/v3/files'
+
 export const SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/drive.file',

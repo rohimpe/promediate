@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { camposCompletada, camposJustificada, camposPendiente } from '../../lib/checklist'
 import { fechaEnLima, formatearDiaLargo, formatearFechaHora, horaEnLima } from '../../lib/fechas'
 import AccionesChecklist from '../AccionesChecklist'
+import AdjuntosEntrega from '../archivos/AdjuntosEntrega'
 import { IconoAdvertencia, ListaChoques } from '../AdvertenciaChoques'
 import TarjetaTarea from '../TarjetaTarea'
 import { IconoGoogle } from './BloqueEvento'
@@ -104,6 +105,7 @@ export default function PanelEvento({ evento, tarea, choques = [], cambiar, sinc
                       {errorBorrar}
                     </p>
                   )}
+                  {tarea.tipo === 'tarea' && <AdjuntosEntrega tarea={tarea} cursoId={tarea.course_id} />}
                 </div>
               }
             />

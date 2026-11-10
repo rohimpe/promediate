@@ -29,11 +29,12 @@ async function cargar(userId) {
     const conexion = await obtenerConexionGoogle()
     // 'reconectar' cuenta como no conectado: Google no aceptaría la llamada.
     const conectado = !!conexion.conectado && conexion.estado === 'activa'
+    const reconectar = !!conexion.conectado && conexion.estado === 'reconectar'
     const sincronizar = conectado ? await obtenerSincronizarGoogle(userId) : false
-    publicar({ userId, conectado, email: conexion.email_google ?? null, sincronizar })
+    publicar({ userId, conectado, reconectar, email: conexion.email_google ?? null, sincronizar })
   } catch {
     // Si no se puede saber, se actúa como si no estuviera conectado: sin interruptor ni avisos.
-    publicar({ userId, conectado: false, email: null, sincronizar: false })
+    publicar({ userId, conectado: false, reconectar: false, email: null, sincronizar: false })
   } finally {
     cargandoPara = null
   }
@@ -47,7 +48,8 @@ export function recargarConexionGoogle() {
 }
 
 // ¿Google está conectado y listo para crear eventos?
-//   const { cargando, conectado, email, sincronizar, cambiarSincronizar } = useConexionGoogle()
+//   const { cargando, conectado, reconectar, email, sincronizar, cambiarSincronizar } = useConexionGoogle()
+//   reconectar: hay conexión guardada pero Google la rechazó (conectado es false)
 //   sincronizar: profiles.google_sincronizar ("Crear eventos en Google automáticamente")
 export function useConexionGoogle() {
   const { user } = useAuth()
@@ -70,6 +72,7 @@ export function useConexionGoogle() {
   return {
     cargando: !vigente,
     conectado: !!vigente?.conectado,
+    reconectar: !!vigente?.reconectar,
     email: vigente?.email ?? null,
     sincronizar: !!vigente?.sincronizar,
     cambiarSincronizar,

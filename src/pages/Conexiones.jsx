@@ -309,7 +309,7 @@ export default function Conexiones() {
 
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Tus eventos de Google Calendar entran solos a Hoy y Pendientes, y tus pendientes pueden aparecer en Calendar.
-          Más adelante podrás guardar archivos en tu Drive.
+          En Archivos puedes subir archivos a una carpeta por curso en tu Drive.
         </p>
 
         {cargando && <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">Cargando…</p>}

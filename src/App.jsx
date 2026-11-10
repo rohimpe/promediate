@@ -11,6 +11,8 @@ import Calendario from './pages/Calendario'
 import Promedios from './pages/Promedios'
 import CursoEvaluaciones from './pages/CursoEvaluaciones'
 import Conexiones from './pages/Conexiones'
+import Archivos from './pages/Archivos'
+import ArchivosCurso from './pages/ArchivosCurso'
 import Tareas from './pages/Tareas'
 import NuevaTarea from './pages/NuevaTarea'
 import EditarTarea from './pages/EditarTarea'
@@ -35,6 +37,8 @@ function App() {
               <Route path="/calendario" element={<Calendario />} />
               <Route path="/promedios" element={<Promedios />} />
               <Route path="/promedios/:id" element={<CursoEvaluaciones />} />
+              <Route path="/archivos" element={<Archivos />} />
+              <Route path="/archivos/:id" element={<ArchivosCurso />} />
               <Route path="/conexiones" element={<Conexiones />} />
               <Route path="/tareas" element={<Tareas />} />
               <Route path="/tareas/nueva" element={<NuevaTarea />} />

@@ -6,6 +6,14 @@ function origenesPermitidos(): string[] {
   return [appUrl, 'http://localhost:5173'].filter((o): o is string => !!o)
 }
 
+// El origen de la petición si es uno de los permitidos; si no, APP_URL. Lo usa google-drive-upload-init: Google
+// solo deja subir desde el navegador (CORS) al origen con el que se inició la sesión de subida.
+export function origenDeLaApp(req: Request): string | null {
+  const origen = req.headers.get('Origin') ?? ''
+  if (origenesPermitidos().includes(origen)) return origen
+  return Deno.env.get('APP_URL') ?? null
+}
+
 export function corsHeaders(req: Request): Record<string, string> {
   const origen = req.headers.get('Origin') ?? ''
   const base: Record<string, string> = {

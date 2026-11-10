@@ -7,6 +7,7 @@ const ENLACES = [
   { to: '/tareas', texto: 'Pendientes', end: true },
   { to: '/tareas/nueva', texto: 'Nuevo pendiente', end: true },
   { to: '/promedios', texto: 'Promedios', end: false },
+  { to: '/archivos', texto: 'Archivos', end: false },
   { to: '/conexiones', texto: 'Conexiones', end: true },
 ]
 

@@ -30,17 +30,19 @@ Habla conmigo **en español** y explícame brevemente lo que haces: estoy aprend
 src/
   components/     # piezas reutilizables; calendario/ e inicio/ tienen las suyas
   pages/          # Inicio, Hoy, Calendario, Promedios, CursoEvaluaciones, Tareas (Pendientes),
-                  # NuevaTarea (Nuevo pendiente), EditarTarea, Conexiones, Login, Registro
-  lib/            # supabaseClient, fechas, tipos, priority, checklist, calendario, inicio, arbol, grades, seguimiento (eventos de Google como pendientes: entran, ocultos, marcados, colores propios), choques (choques de horario), googleSync (pendientes como eventos de Google: cuándo crear, actualizar o borrar), APIs (googleApi: conexión con Google y sincronización; seguimientoApi)
-  hooks/          # useAuth, useTasks, useCursosConNotas, useEvaluaciones, useGoogleEventos, useSeguimientoGoogle, usePendientesGoogle, useComprobarChoques, useConexionGoogle, ...
+                  # NuevaTarea (Nuevo pendiente), EditarTarea, Archivos, ArchivosCurso, Conexiones, Login, Registro
+  lib/            # supabaseClient, fechas, tipos, priority, checklist, calendario, inicio, arbol, grades, seguimiento (eventos de Google como pendientes: entran, ocultos, marcados, colores propios), choques (choques de horario), googleSync (pendientes como eventos de Google: cuándo crear, actualizar o borrar), archivos (reglas y textos de Drive), APIs (googleApi: conexión con Google y sincronización; seguimientoApi; archivosApi: Drive)
+  hooks/          # useAuth, useTasks, useCursosConNotas, useEvaluaciones, useGoogleEventos, useSeguimientoGoogle, usePendientesGoogle, useComprobarChoques, useConexionGoogle, useSubidas (cola de subidas a Drive y useEstadoDrive), ...
 supabase/
   migrations/
   diagnostico_pesos.sql          # solo lee; revisa los pesos antes de migrar
   verificar_es_nodo_propio.sql   # solo lee; compara la base real con la migración de RLS
   verificar_google_rls.sql       # solo lee; comprueba RLS activo y cero políticas en las tablas de Google
   config.toml             # mínimo: solo deja google-callback sin verificación de JWT
-  functions/              # Edge Functions (Deno): google-connect, google-callback, google-disconnect, google-calendar-events, google-calendar-sync
-    _shared/              # cors, supabaseAdmin, cifrado (AES-GCM), google (tokens y constantes: URL_EVENTOS, SCOPE_CALENDAR, ORIGEN_APP)
+  functions/              # Edge Functions (Deno): google-connect, google-callback, google-disconnect, google-calendar-events, google-calendar-sync,
+                          # google-drive-upload-init, google-drive-register, google-drive-delete
+    _shared/              # cors (+ origenDeLaApp), supabaseAdmin, cifrado (AES-GCM), google (tokens y constantes: URL_EVENTOS, SCOPE_CALENDAR, SCOPE_DRIVE, ORIGEN_APP),
+                          # drive (validación de archivos, prepararDrive, carpetas)
 ```
 
 ---
@@ -169,8 +171,23 @@ Las entregas y actividades de la app se crean y mantienen como eventos en el Goo
   - Sin Google conectado todo funciona como antes: ni interruptor ni avisos.
 - **Despliegue:** migración `20261111000000_google_sincronizar_pendientes.sql` en el SQL Editor y luego `npx supabase functions deploy google-calendar-sync` (sin Docker: `--use-api`). Conviene volver a desplegar `google-calendar-events` (ahora importa las constantes de `_shared/google.ts`).
 
-### 9. Archivos (Fase 3, parte D)
-Carpetas (una por curso). Los adjuntos se suben al Google Drive del usuario con el permiso `drive.file`.
+### 9. Archivos en Google Drive (Fase 3, parte D — hecha, pendiente de probar)
+Una carpeta por curso dentro de una carpeta raíz **"Tablero de Vida"** en el Drive del usuario. Solo usa `drive.file` (ya concedido): la app solo ve lo que ella creó.
+
+- **Subida en 3 pasos** (`subirArchivo`, `src/lib/archivosApi.js`, nunca lanza error):
+  1. `google-drive-upload-init` recibe `{ course_id, nombre, mime_type, tamano }`; valida que el curso es del usuario, el nombre (1–200, sin caracteres de control), el tope de **25 MB** y bloquea `.exe .bat .cmd .msi .scr .js .vbs .sh` (también por tipo MIME); asegura las carpetas e inicia una **subida reanudable** (`uploadType=resumable`, con `X-Upload-Content-Length`) y devuelve `upload_url`. La sesión se inicia con la cabecera `Origin` del origen permitido que hizo la petición (`origenDeLaApp`: APP_URL o `http://localhost:5173`), porque Google solo acepta el PUT del navegador (CORS) desde ese origen.
+  2. El navegador hace `PUT` directo a `upload_url` con `XMLHttpRequest` (fetch no da progreso de subida). El archivo no pasa por Supabase y el access token nunca llega al navegador. Sin respuesta → `sin_conexion` o `sin_respuesta` (red o CORS; se ve en la consola).
+  3. `google-drive-register` recibe `{ drive_file_id, course_id, task_id? }`; comprueba curso y entrega del usuario, pide a Drive los metadatos **reales** (nombre, mimeType, size, webViewLink, parents), exige que el padre sea la carpeta del curso, vuelve a validar tamaño y tipo (si no cumple, lo borra de Drive) y guarda la fila con `upsert` sobre `(user_id, drive_file_id)`.
+- **Carpetas** (`asegurarCarpetaCurso`, `_shared/drive.ts`): ids en `profiles.drive_root_folder_id` y `courses.drive_folder_id`. Si una carpeta responde 404, está en la papelera o ya no está dentro de la raíz, se crea otra y se guarda el id nuevo. El id se guarda solo si nadie lo cambió mientras tanto; si otra petición ganó, se usa la suya y se borra la recién creada. Además el frontend sube **de uno en uno** (`useSubidas`) para no crear carpetas duplicadas. Renombrar un curso no renombra su carpeta.
+- **Borrar** (`google-drive-delete`, `{ archivo_id }`): verifica que la fila es del usuario, `DELETE` en Drive (borrado definitivo, no papelera; 404/410 cuentan como borrado) y elimina la fila. Si Google no está disponible, la fila **no** se borra. **"Quitar de la lista"** solo borra la fila desde el frontend (RLS), para archivos que el usuario ya borró en Drive; no se verifica cada archivo.
+- **Estados** de las tres funciones: `ok`, `no_conectado`, `reconectar`, `permisos_incompletos`, `demasiado_grande`, `tipo_no_permitido`, `error` (textos en `MENSAJES_ARCHIVO`, `src/lib/archivos.js`). `invalid_grant` lo maneja `obtenerAccessToken`. Los logs solo llevan códigos: nunca tokens, la URL de sesión ni nombres de archivos.
+- **Frontend:**
+  - **Archivos** (`/archivos`, en el menú): una tarjeta por curso con cuántos archivos tiene (`archivos(count)` en la misma consulta) y "Abrir carpeta en Drive" (si ya existe la carpeta; se crea con la primera subida). Abajo, "Sin curso": archivos de cursos borrados (siguen en Drive).
+  - **Archivos de un curso** (`/archivos/:id`): lista (nombre, tipo, tamaño, fecha, "Abrir en Drive", Borrar con "Se eliminará también de tu Google Drive", Quitar de la lista) y "Subir archivo" con selección múltiple, barra de progreso y error por archivo (`ProgresoSubidas`).
+  - **Adjuntos de una entrega** (`AdjuntosEntrega`): en `PanelEvento` y en el formulario al **editar** una entrega (una nueva aún no tiene id). Sube a la carpeta del curso de la entrega (en el formulario, el curso elegido en ese momento) con `task_id`; si no tiene curso, pide elegir uno.
+  - **Sin Google** (`useEstadoDrive`: `useConexionGoogle`, que ahora expone `reconectar`, + el último estado que devolvió una función, p. ej. `permisos_incompletos`): `AvisoDrive` invita a Conexiones, se oculta "Subir" y la lista registrada se sigue viendo con sus enlaces.
+  - Componentes en `src/components/archivos/`; reglas y textos en `src/lib/archivos.js` (copia de la validación de `_shared/drive.ts`, solo para avisar antes de subir).
+- **Despliegue:** migración `20261114000000_google_drive_archivos.sql` en el SQL Editor y luego `npx supabase functions deploy google-drive-upload-init`, `google-drive-register` y `google-drive-delete` (sin Docker: `--use-api`).
 
 ### 10. Recordatorios (Fase 2)
 Se separan en dos piezas independientes, para poder cambiar el canal sin tocar las reglas:
@@ -186,10 +203,11 @@ El usuario elige su proveedor y guarda su propia API key (cifrada, usada solo de
 
 ## Modelo de datos
 
-Las 4 tablas principales tienen RLS activo con políticas por usuario (`user_id = auth.uid()`; en `profiles`, `id = auth.uid()`). Las 2 tablas de conexión de Google (`google_oauth_states`, `google_connections`) tienen RLS activo **sin políticas** a propósito. Las 3 de eventos de Google (`google_seguimiento`, `google_ocultos`, `google_colores`) tienen RLS con políticas por usuario, solo con `user_id = (select auth.uid())` (sin subconsultas).
+Las 4 tablas principales tienen RLS activo con políticas por usuario (`user_id = auth.uid()`; en `profiles`, `id = auth.uid()`). Las 2 tablas de conexión de Google (`google_oauth_states`, `google_connections`) tienen RLS activo **sin políticas** a propósito. Las 3 de eventos de Google (`google_seguimiento`, `google_ocultos`, `google_colores`) y `archivos` tienen RLS con políticas por usuario, solo con `user_id = (select auth.uid())` (sin subconsultas).
 
-- **`profiles`**: `id` (= auth.users.id), `nombre`, `ultimo_resumen` (date), `google_incluir_todo_el_dia` (boolean, default false), `google_sincronizar` (boolean, default true: crear los pendientes nuevos en Google), `created_at`. Sin política de borrado (se borra con el usuario).
-- **`courses`**: `id`, `user_id`, `nombre`, `color`, `created_at`.
+- **`profiles`**: `id` (= auth.users.id), `nombre`, `ultimo_resumen` (date), `google_incluir_todo_el_dia` (boolean, default false), `google_sincronizar` (boolean, default true: crear los pendientes nuevos en Google), `drive_root_folder_id` (nullable; carpeta "Tablero de Vida" en Drive), `created_at`. Sin política de borrado (se borra con el usuario).
+- **`courses`**: `id`, `user_id`, `nombre`, `color`, `drive_folder_id` (nullable; carpeta del curso en Drive), `created_at`.
+- **`archivos`**: `id`, `user_id` (default `auth.uid()`, `on delete cascade`), `course_id` (nullable, `on delete set null`), `task_id` (nullable, `on delete set null`), `drive_file_id`, `nombre`, `mime_type`, `tamano` (bigint), `enlace` (webViewLink), `created_at`. Único por (`user_id`, `drive_file_id`). RLS con políticas por usuario, solo `user_id = (select auth.uid())`; que `course_id` y `task_id` sean del usuario lo comprueba `google-drive-register`. Migración `20261114000000_google_drive_archivos.sql`.
 - **`tasks`**: `id`, `user_id`, `course_id` (nullable; al borrar el curso queda en null), `titulo`, `descripcion`, `tipo` (`tarea` | `actividad`), `prioridad_base`, `fecha_entrega` (timestamptz, solo entregas), `fecha_actividad` (date, solo actividades), `hora_inicio` y `hora_fin` (time, nullable; hora de pared de Lima; fin > inicio), `estado` (`pendiente` | `completada` | `justificada`), `justificacion`, `completed_at`, `google_event_id` (nullable; = id de la tarea sin guiones cuando está en Google), `google_sync` (`ninguno` | `ok` | `pendiente` | `error`, default `ninguno`), `google_sync_error` (texto genérico, ≤ 200, nullable), `created_at`.
 - **`evaluations`**: `id`, `user_id`, `course_id`, `parent_id` (nullable; al borrar un nodo se borran sus hijos), `nombre`, `peso` (numeric 0–100, **% del padre**), `nota` (numeric 0–20, nullable), `orden`, `reparto` (`manual` | `iguales`, default `manual`), `descartar_peores` (int ≥ 0, default 0).
 - **`google_oauth_states`** (solo Edge Functions): `state` (PK, aleatorio), `user_id`, `expira_en` (10 min), `created_at`. Los vencidos se borran al crear uno nuevo.
@@ -226,7 +244,7 @@ Las 4 tablas principales tienen RLS activo con políticas por usuario (`user_id 
     - [ ] **B2:** eventos de Google como pendientes en Hoy y Pendientes, que el usuario puede quitar (sección 6; hecha, falta ejecutar la migración `20261110000000` y probar)
   - [ ] **C:** crear y sincronizar los pendientes como eventos en Google Calendar (sección 8b; hecha, falta ejecutar la migración `20261111000000`, desplegar `google-calendar-sync` y probar)
     - [ ] **C2:** editar desde la app eventos que ya existían en Google
-  - [ ] **D:** archivos en Google Drive (sección 9)
+  - [ ] **D:** archivos en Google Drive (sección 9; hecha, falta ejecutar la migración `20261114000000`, desplegar las tres funciones de Drive y probar, sobre todo que el PUT directo a Google pase el CORS)
 - [ ] **Fase 4:** IA (preguntas y lectura de sílabos)
 
 Actualiza esta lista cuando terminemos cada fase.
