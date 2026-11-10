@@ -1,8 +1,8 @@
 import { Link } from 'react-router'
 
 const TEXTOS = {
-  no_conectado: 'Conecta tu cuenta de Google para subir archivos a tu Drive.',
-  reconectar: 'Google pide volver a conectar tu cuenta para seguir subiendo archivos.',
+  no_conectado: 'Conecta tu cuenta de Google para subir archivos y crear carpetas en tu Drive.',
+  reconectar: 'Google pide volver a conectar tu cuenta para seguir subiendo archivos y creando carpetas.',
   permisos_incompletos: 'Falta el permiso de Google Drive. Vuelve a conectar Google y acepta todos los permisos.',
 }
 

@@ -4,7 +4,7 @@ import AvisoDrive from '../components/archivos/AvisoDrive'
 import ListaArchivos from '../components/archivos/ListaArchivos'
 import EstadoVacio from '../components/inicio/EstadoVacio'
 import { useEstadoDrive } from '../hooks/useSubidas'
-import { contarArchivos, enlaceCarpetaDrive } from '../lib/archivos'
+import { contarArchivos, contarCarpetas, enlaceCarpetaDrive } from '../lib/archivos'
 import { listarArchivos, listarCursosConArchivos } from '../lib/archivosApi'
 
 const BOTON =
@@ -54,6 +54,7 @@ export default function Archivos() {
       <ul className="grid gap-3 sm:grid-cols-2">
         {cursos.map((c) => {
           const n = contarArchivos(c)
+          const nCarpetas = contarCarpetas(c)
           return (
             <li
               key={c.id}
@@ -71,6 +72,7 @@ export default function Archivos() {
               </Link>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                 {n === 0 ? 'Sin archivos' : `${n} ${n === 1 ? 'archivo' : 'archivos'}`}
+                {nCarpetas > 0 && ` · ${nCarpetas} ${nCarpetas === 1 ? 'carpeta' : 'carpetas'}`}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link to={`/archivos/${c.id}`} className={BOTON}>
@@ -84,7 +86,7 @@ export default function Archivos() {
               </div>
               {!c.drive_folder_id && (
                 <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
-                  La carpeta en Drive se crea al subir el primer archivo.
+                  La carpeta en Drive se crea al subir el primer archivo o crear la primera carpeta.
                 </p>
               )}
             </li>

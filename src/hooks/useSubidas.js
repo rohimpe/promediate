@@ -28,7 +28,7 @@ export function useEstadoDrive() {
 // Cola de subidas a Drive con el progreso de cada archivo. Se suben de UNO EN UNO: así la primera subida crea las
 // carpetas y las siguientes las reutilizan (en paralelo podrían crear carpetas duplicadas).
 //   const { subidas, agregar, limpiar } = useSubidas({ onSubido, onFallo })
-//   agregar(archivos, { cursoId, tareaId? }): archivos es un FileList o un array de File
+//   agregar(archivos, { cursoId, carpetaId?, tareaId? }): archivos es un FileList o un array de File
 //   subidas: [{ clave, nombre, progreso (0 a 1), estado: 'espera' | 'subiendo' | 'registrando' | 'listo' | 'error', error }]
 //   onSubido(fila): cada archivo que quedó registrado (la fila de `archivos`)
 //   onFallo(estado): cada archivo que falló, con el estado ('demasiado_grande', 'reconectar'…)

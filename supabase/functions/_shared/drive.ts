@@ -18,6 +18,11 @@ export type EstadoDrive =
   | 'permisos_incompletos'
   | 'demasiado_grande'
   | 'tipo_no_permitido'
+  // Carpetas propias (google-drive-folder) y subidas a una carpeta que ya no existe:
+  | 'nombre_invalido'
+  | 'duplicada'
+  | 'demasiado_profunda'
+  | 'no_encontrada'
   | 'error'
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -150,12 +155,12 @@ export async function prepararDrive(userId: string, contexto: string): Promise<{
 // Carpetas: NOMBRE_CARPETA_RAIZ (raíz, en profiles.drive_root_folder_id) y una por curso (courses.drive_folder_id).
 // Las carpetas se encuentran SIEMPRE por los ids guardados, nunca buscando por nombre.
 // ---------------------------------------------------------------------
-const MIME_CARPETA = 'application/vnd.google-apps.folder'
+export const MIME_CARPETA = 'application/vnd.google-apps.folder'
 // Nombre de la carpeta raíz en el Drive del usuario. Si cambia, las carpetas que ya existen se renombran solas en
 // la siguiente subida (ver asegurarCarpetaCurso).
 export const NOMBRE_CARPETA_RAIZ = 'Promediate'
 
-const urlArchivo = (id: string, campos = '') =>
+export const urlArchivo = (id: string, campos = '') =>
   `${URL_DRIVE_ARCHIVOS}/${encodeURIComponent(id)}${campos ? `?fields=${campos}` : ''}`
 
 interface Carpeta {
@@ -165,7 +170,7 @@ interface Carpeta {
 
 // Lee una carpeta guardada (files.get). Devuelve null si ya no sirve: 404, en la papelera (trashed también es true
 // si se borró la carpeta que la contiene) o no es una carpeta.
-async function leerCarpeta(token: string, id: string): Promise<Carpeta | null> {
+export async function leerCarpeta(token: string, id: string): Promise<Carpeta | null> {
   const r = await llamarDrive(token, 'GET', urlArchivo(id, 'id,name,mimeType,trashed,parents'))
   if (r.status === 404) return null
   if (!exito(r)) throw new FalloDrive(r)
@@ -176,7 +181,7 @@ async function leerCarpeta(token: string, id: string): Promise<Carpeta | null> {
   }
 }
 
-async function crearCarpeta(token: string, nombre: string, padre?: string): Promise<string> {
+export async function crearCarpeta(token: string, nombre: string, padre?: string): Promise<string> {
   const r = await llamarDrive(token, 'POST', `${URL_DRIVE_ARCHIVOS}?fields=id`, {
     cuerpo: { name: nombre, mimeType: MIME_CARPETA, ...(padre ? { parents: [padre] } : {}) },
   })
@@ -298,4 +303,69 @@ export async function cursoDelUsuario(userId: string, cursoId: string, contexto:
     throw new Error('base de datos')
   }
   return data
+}
+
+// ---------------------------------------------------------------------
+// Carpetas propias del usuario dentro de la carpeta de un curso (tabla `carpetas`).
+// Se leen con la service role filtrando SIEMPRE por el user_id del JWT.
+// ---------------------------------------------------------------------
+export interface CarpetaPropia {
+  id: string
+  course_id: string
+  parent_id: string | null
+  drive_folder_id: string
+  nombre: string
+}
+
+export const COLUMNAS_CARPETA = 'id, course_id, parent_id, drive_folder_id, nombre, created_at'
+
+// La carpeta, solo si es del usuario (null si no existe o es de otro).
+export async function carpetaDelUsuario(userId: string, carpetaId: string, contexto: string) {
+  const { data, error } = await supabaseAdmin
+    .from('carpetas')
+    .select('id, course_id, parent_id, drive_folder_id, nombre')
+    .eq('id', carpetaId)
+    .eq('user_id', userId)
+    .maybeSingle<CarpetaPropia>()
+  if (error) {
+    registrarFallo(`${contexto}: leer carpeta`, error.code)
+    throw new Error('base de datos')
+  }
+  return data
+}
+
+// Todas las carpetas del usuario en un curso, solo con lo necesario para recorrer el árbol.
+export async function arbolDeCarpetas(userId: string, cursoId: string, contexto: string) {
+  const { data, error } = await supabaseAdmin
+    .from('carpetas')
+    .select('id, parent_id, nombre')
+    .eq('user_id', userId)
+    .eq('course_id', cursoId)
+  if (error) {
+    registrarFallo(`${contexto}: leer carpetas`, error.code)
+    throw new Error('base de datos')
+  }
+  return (data ?? []) as { id: string; parent_id: string | null; nombre: string }[]
+}
+
+// Nivel de una carpeta: 1 si está directamente en la carpeta del curso, 2 si está dentro de una de nivel 1…
+// El tope de vueltas evita un bucle infinito si la base tuviera un ciclo.
+export function nivelDeCarpeta(arbol: { id: string; parent_id: string | null }[], id: string): number {
+  const padres = new Map(arbol.map((c) => [c.id, c.parent_id]))
+  let nivel = 0
+  let actual: string | null | undefined = id
+  while (actual && nivel <= arbol.length) {
+    nivel++
+    actual = padres.get(actual)
+  }
+  return nivel
+}
+
+// La carpeta y todas las que contiene (a cualquier profundidad).
+export function carpetaYDescendientes(arbol: { id: string; parent_id: string | null }[], id: string): string[] {
+  const resultado = [id]
+  for (let i = 0; i < resultado.length; i++) {
+    for (const c of arbol) if (c.parent_id === resultado[i] && !resultado.includes(c.id)) resultado.push(c.id)
+  }
+  return resultado
 }

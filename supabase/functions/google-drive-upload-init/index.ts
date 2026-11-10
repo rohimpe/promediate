@@ -1,8 +1,11 @@
-// Parte D de la Fase 3: prepara la subida de UN archivo a la carpeta de un curso en el Google Drive del usuario.
+// Parte D de la Fase 3: prepara la subida de UN archivo a la carpeta de un curso (o a una carpeta propia dentro de
+// ella) en el Google Drive del usuario.
 //
-// Petición: { course_id, nombre, mime_type, tamano }
+// Petición: { course_id, carpeta_id?, nombre, mime_type, tamano }
+//   carpeta_id: una carpeta propia (tabla `carpetas`) de ese curso; sin ella, se sube a la carpeta del curso
 // Respuesta (200): { estado, upload_url? }
-//   estado: 'ok' | 'no_conectado' | 'reconectar' | 'permisos_incompletos' | 'demasiado_grande' | 'tipo_no_permitido' | 'error'
+//   estado: 'ok' | 'no_conectado' | 'reconectar' | 'permisos_incompletos' | 'demasiado_grande' | 'tipo_no_permitido'
+//           | 'no_encontrada' (la carpeta no es del usuario, es de otro curso o se borró en Drive) | 'error'
 //   upload_url: la URL de la sesión de subida reanudable (solo con 'ok')
 //
 // Cómo funciona: la función asegura las carpetas, inicia en Drive una subida reanudable (uploadType=resumable) con
@@ -17,10 +20,12 @@
 import { corsHeaders, origenDeLaApp, responderJson, responderPreflight } from '../_shared/cors.ts'
 import {
   asegurarCarpetaCurso,
+  carpetaDelUsuario,
   cursoDelUsuario,
   estadoDeError,
   estadoDeFallo,
   exito,
+  leerCarpeta,
   llamarDrive,
   motivoRechazo,
   nombreValido,
@@ -40,14 +45,21 @@ const MAX_TAMANO_ARCHIVO = 100 * 1024 * 1024 // 100 MB
 
 function leerPeticion(cuerpo: unknown) {
   if (typeof cuerpo !== 'object' || cuerpo === null) return null
-  const { course_id, nombre, mime_type, tamano } = cuerpo as Record<string, unknown>
+  const { course_id, carpeta_id, nombre, mime_type, tamano } = cuerpo as Record<string, unknown>
   if (typeof course_id !== 'string' || !UUID.test(course_id)) return null
+  if (carpeta_id != null && (typeof carpeta_id !== 'string' || !UUID.test(carpeta_id))) return null
   if (!nombreValido(nombre)) return null
   if (typeof tamano !== 'number' || !Number.isSafeInteger(tamano) || tamano < 0) return null
   // El navegador a veces no sabe el tipo (manda ''): entonces se sube como binario genérico.
   let mime = typeof mime_type === 'string' ? mime_type.trim().slice(0, 255) : ''
   if (!/^[\w.+-]+\/[\w.+-]+$/.test(mime)) mime = MIME_GENERICO
-  return { cursoId: course_id.toLowerCase(), nombre: nombre.trim(), mime, tamano }
+  return {
+    cursoId: course_id.toLowerCase(),
+    carpetaId: typeof carpeta_id === 'string' ? carpeta_id.toLowerCase() : null,
+    nombre: nombre.trim(),
+    mime,
+    tamano,
+  }
 }
 
 Deno.serve(async (req) => {
@@ -61,7 +73,7 @@ Deno.serve(async (req) => {
 
     const peticion = leerPeticion(await req.json().catch(() => null))
     if (!peticion) return responderJson(req, { error: 'Petición inválida' }, 400)
-    const { cursoId, nombre, mime, tamano } = peticion
+    const { cursoId, carpetaId, nombre, mime, tamano } = peticion
 
     // Se valida antes de tocar Google: así un archivo rechazado no crea carpetas.
     const rechazo = motivoRechazo(nombre, mime) ?? (tamano > MAX_TAMANO_ARCHIVO ? 'demasiado_grande' : null)
@@ -70,10 +82,25 @@ Deno.serve(async (req) => {
     const curso = await cursoDelUsuario(userId, cursoId, CONTEXTO)
     if (!curso) return responderJson(req, { error: 'Curso no encontrado' }, 404)
 
+    // La carpeta propia (si viene) debe ser del usuario y de ESE curso.
+    const carpetaPropia = carpetaId ? await carpetaDelUsuario(userId, carpetaId, CONTEXTO) : null
+    if (carpetaId && (!carpetaPropia || carpetaPropia.course_id !== curso.id)) {
+      return responderJson(req, { estado: 'no_encontrada' })
+    }
+
     const google = await prepararDrive(userId, CONTEXTO)
     if ('estado' in google) return responderJson(req, { estado: google.estado })
 
-    const carpeta = await asegurarCarpetaCurso(google.token, userId, curso)
+    let carpeta: string
+    if (carpetaPropia) {
+      // Si el usuario la borró en Drive (o está en la papelera), el archivo quedaría perdido: se avisa antes.
+      if (!(await leerCarpeta(google.token, carpetaPropia.drive_folder_id))) {
+        return responderJson(req, { estado: 'no_encontrada' })
+      }
+      carpeta = carpetaPropia.drive_folder_id
+    } else {
+      carpeta = await asegurarCarpetaCurso(google.token, userId, curso)
+    }
 
     const origen = origenDeLaApp(req)
     const r = await llamarDrive(google.token, 'POST', `${URL_DRIVE_SUBIDA}?uploadType=resumable&fields=id`, {

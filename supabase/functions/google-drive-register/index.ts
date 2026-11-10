@@ -1,18 +1,21 @@
 // Parte D de la Fase 3: registra en la tabla `archivos` un archivo que el navegador acaba de subir a Drive.
 //
-// Petición: { drive_file_id, course_id, task_id? }
+// Petición: { drive_file_id, course_id, carpeta_id?, task_id? }
 // Respuesta (200): { estado, archivo? }
-//   estado: 'ok' | 'no_conectado' | 'reconectar' | 'permisos_incompletos' | 'demasiado_grande' | 'tipo_no_permitido' | 'error'
+//   estado: 'ok' | 'no_conectado' | 'reconectar' | 'permisos_incompletos' | 'demasiado_grande' | 'tipo_no_permitido'
+//           | 'no_encontrada' (la carpeta no es del usuario o es de otro curso) | 'error'
 //   archivo: la fila guardada (solo con 'ok')
 //
 // No se confía en nada de lo que diga el cliente sobre el archivo: el nombre, el tipo, el tamaño y el enlace se le
-// piden a Drive con el token del usuario, y se comprueba que el archivo está en la carpeta de ESE curso. Si aun así
+// piden a Drive con el token del usuario, y se comprueba que el archivo está en la carpeta de ESE curso (o en la
+// carpeta propia indicada, que debe ser del usuario y de ese curso). Si aun así
 // su tipo no está permitido, se borra de Drive y no se registra. El tamaño no se vuelve a comprobar: lo fija la
 // sesión de subida que creó google-drive-upload-init (X-Upload-Content-Length, con su MAX_TAMANO_ARCHIVO).
 //
 // Nunca se registran tokens ni nombres de archivos: solo mensajes genéricos y códigos.
 import { corsHeaders, responderJson, responderPreflight } from '../_shared/cors.ts'
 import {
+  carpetaDelUsuario,
   cursoDelUsuario,
   estadoDeError,
   estadoDeFallo,
@@ -31,13 +34,15 @@ const CAMPOS = 'id,name,mimeType,size,webViewLink,parents,trashed'
 
 function leerPeticion(cuerpo: unknown) {
   if (typeof cuerpo !== 'object' || cuerpo === null) return null
-  const { drive_file_id, course_id, task_id } = cuerpo as Record<string, unknown>
+  const { drive_file_id, course_id, carpeta_id, task_id } = cuerpo as Record<string, unknown>
   if (typeof drive_file_id !== 'string' || !ID_DRIVE.test(drive_file_id)) return null
   if (typeof course_id !== 'string' || !UUID.test(course_id)) return null
+  if (carpeta_id != null && (typeof carpeta_id !== 'string' || !UUID.test(carpeta_id))) return null
   if (task_id != null && (typeof task_id !== 'string' || !UUID.test(task_id))) return null
   return {
     driveFileId: drive_file_id,
     cursoId: course_id.toLowerCase(),
+    carpetaId: typeof carpeta_id === 'string' ? carpeta_id.toLowerCase() : null,
     tareaId: typeof task_id === 'string' ? task_id.toLowerCase() : null,
   }
 }
@@ -52,12 +57,19 @@ Deno.serve(async (req) => {
 
     const peticion = leerPeticion(await req.json().catch(() => null))
     if (!peticion) return responderJson(req, { error: 'Petición inválida' }, 400)
-    const { driveFileId, cursoId, tareaId } = peticion
+    const { driveFileId, cursoId, carpetaId, tareaId } = peticion
 
     // El curso y la entrega deben ser del usuario del JWT (la política RLS de `archivos` no lo comprueba).
     const curso = await cursoDelUsuario(userId, cursoId, CONTEXTO)
     if (!curso) return responderJson(req, { error: 'Curso no encontrado' }, 404)
-    if (!curso.drive_folder_id) return responderJson(req, { estado: 'error' })
+
+    // La carpeta donde DEBE estar el archivo: la propia (del usuario y de ese curso) o la del curso.
+    const carpetaPropia = carpetaId ? await carpetaDelUsuario(userId, carpetaId, CONTEXTO) : null
+    if (carpetaId && (!carpetaPropia || carpetaPropia.course_id !== curso.id)) {
+      return responderJson(req, { estado: 'no_encontrada' })
+    }
+    const padreEsperado = carpetaPropia ? carpetaPropia.drive_folder_id : curso.drive_folder_id
+    if (!padreEsperado) return responderJson(req, { estado: 'error' })
 
     if (tareaId) {
       const { data: tarea, error } = await supabaseAdmin
@@ -88,8 +100,8 @@ Deno.serve(async (req) => {
     }
     const archivo = r.datos
     const padres = Array.isArray(archivo.parents) ? archivo.parents : []
-    if (archivo.trashed === true || !padres.includes(curso.drive_folder_id)) {
-      registrarFallo(`${CONTEXTO}: el archivo no está en la carpeta del curso`)
+    if (archivo.trashed === true || !padres.includes(padreEsperado)) {
+      registrarFallo(`${CONTEXTO}: el archivo no está en la carpeta esperada`)
       return responderJson(req, { estado: 'error' })
     }
 
@@ -114,6 +126,7 @@ Deno.serve(async (req) => {
         {
           user_id: userId,
           course_id: curso.id,
+          carpeta_id: carpetaPropia?.id ?? null,
           task_id: tareaId,
           drive_file_id: driveFileId,
           nombre,
@@ -123,7 +136,7 @@ Deno.serve(async (req) => {
         },
         { onConflict: 'user_id,drive_file_id' },
       )
-      .select('id, course_id, task_id, drive_file_id, nombre, mime_type, tamano, enlace, created_at')
+      .select('id, course_id, carpeta_id, task_id, drive_file_id, nombre, mime_type, tamano, enlace, created_at')
       .single()
     if (errorGuardar) {
       registrarFallo(`${CONTEXTO}: guardar fila`, errorGuardar.code)
