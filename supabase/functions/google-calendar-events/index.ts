@@ -3,7 +3,10 @@
 //
 // Respuesta (siempre 200 salvo error): { estado, eventos, truncado }
 //   estado: 'ok' | 'no_conectado' | 'reconectar' | 'permisos_incompletos'
-//   eventos: [{ id, serieId, titulo, colorId, inicio, fin, todoElDia, lugar, enlace, origen: 'google' }]
+//   eventos: [{ id, serieId, titulo, colorId, inicio, fin, todoElDia, lugar, enlace, etag, editable, motivoNoEditable,
+//               origen: 'google' }]   (ver normalizarEvento en _shared/eventosGoogle.ts)
+//     - etag: versión del evento (google-calendar-editar la exige para no pisar cambios hechos en Google)
+//     - editable: si se puede editar desde la app; motivoNoEditable: 'invitados' | 'organizador' | 'app' | null
 //     - colorId: '1'…'11' (color que el usuario eligió en Google) o null
 //     - serieId: recurringEventId de Google (la serie a la que pertenece la ocurrencia) o null
 //     - con hora:       inicio y fin son instantes ISO con su offset original ("2026-11-10T09:00:00+01:00")
@@ -22,6 +25,7 @@ import {
   URL_EVENTOS,
 } from '../_shared/google.ts'
 import { supabaseAdmin, usuarioDeLaPeticion } from '../_shared/supabaseAdmin.ts'
+import { CAMPOS_EVENTO, type EventoGoogle, normalizarEvento } from '../_shared/eventosGoogle.ts'
 
 const MAX_DIAS = 100
 const MS_POR_DIA = 86_400_000
@@ -29,23 +33,8 @@ const POR_PAGINA = 250
 const MAX_EVENTOS = 1000
 
 // Pedimos solo los campos que usamos (así la descripción, los asistentes completos y demás
-// datos personales ni siquiera salen de Google).
-const CAMPOS =
-  'nextPageToken,items(id,recurringEventId,status,summary,colorId,start,end,location,htmlLink,attendees(self,responseStatus),extendedProperties(private))'
-
-interface EventoGoogle {
-  id?: string
-  recurringEventId?: string
-  status?: string
-  summary?: string
-  colorId?: string
-  start?: { date?: string; dateTime?: string }
-  end?: { date?: string; dateTime?: string }
-  location?: string
-  htmlLink?: string
-  attendees?: { self?: boolean; responseStatus?: string }[]
-  extendedProperties?: { private?: Record<string, string> }
-}
+// datos personales ni siquiera salen de Google). De los asistentes solo llegan self y responseStatus.
+const CAMPOS = `nextPageToken,items(${CAMPOS_EVENTO})`
 
 // Valida el rango y lo devuelve como instantes UTC ("…Z"), que es lo que Google acepta en timeMin/timeMax.
 function leerRango(cuerpo: unknown): { desde: string; hasta: string } | null {
@@ -71,24 +60,6 @@ function sobra(e: EventoGoogle, idsDeLaApp: Set<string>): boolean {
   if (e.extendedProperties?.private?.origen === ORIGEN_APP) return true
   if (e.id && idsDeLaApp.has(e.id)) return true
   return false
-}
-
-function normalizar(e: EventoGoogle) {
-  const todoElDia = !!e.start?.date && !e.start?.dateTime
-  const inicio = (todoElDia ? e.start?.date : e.start?.dateTime) as string
-  const fin = (todoElDia ? e.end?.date : e.end?.dateTime) ?? inicio
-  return {
-    id: e.id as string,
-    serieId: e.recurringEventId ?? null, // id de la serie repetitiva (null si el evento es suelto)
-    titulo: e.summary?.trim() || 'Sin título',
-    colorId: e.colorId ?? null, // '1'…'11' si el usuario le puso color en Google; null = color del calendario
-    inicio,
-    fin,
-    todoElDia,
-    lugar: e.location?.trim() || null,
-    enlace: e.htmlLink ?? null,
-    origen: 'google',
-  }
 }
 
 Deno.serve(async (req) => {
@@ -142,7 +113,7 @@ Deno.serve(async (req) => {
     if (errorTareas) registrarFallo('google-calendar-events: leer google_event_id', errorTareas.code)
     const idsDeLaApp = new Set((filas ?? []).map((f) => f.google_event_id as string))
 
-    const eventos: ReturnType<typeof normalizar>[] = []
+    const eventos: ReturnType<typeof normalizarEvento>[] = []
     let recibidos = 0
     let truncado = false
     let pagina: string | undefined
@@ -178,7 +149,7 @@ Deno.serve(async (req) => {
         recibidos++
         // Sin id o sin inicio no se puede dibujar: se ignora.
         if (!e.id || !(e.start?.date || e.start?.dateTime)) continue
-        if (!sobra(e, idsDeLaApp)) eventos.push(normalizar(e))
+        if (!sobra(e, idsDeLaApp)) eventos.push(normalizarEvento(e, idsDeLaApp))
       }
       pagina = truncado ? undefined : cuerpo.nextPageToken
       // Si justo se llegó al tope y aún hay otra página, hay eventos que no se pidieron.

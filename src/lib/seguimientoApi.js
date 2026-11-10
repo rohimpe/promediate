@@ -25,6 +25,27 @@ export async function guardarSeguimiento(campos) {
   return data
 }
 
+// Tras editar el evento en Google: refresca el resumen guardado de una ocurrencia ya marcada.
+// Es un UPDATE (nunca crea filas): si el evento no estaba marcado, no cambia nada y devuelve null.
+//   resumen: { titulo, inicio, fin, todo_el_dia } (de resumenDeEvento)
+export async function actualizarResumenSeguimiento(googleId, resumen) {
+  const { data, error } = await supabase
+    .from('google_seguimiento')
+    .update(resumen)
+    .eq('google_event_id', googleId)
+    .select()
+    .maybeSingle()
+  if (error) throw registrarError(error)
+  return data
+}
+
+// Tras cambiar el título de toda una serie en Google: lo cambia en las ocurrencias ya marcadas de esa serie.
+export async function actualizarTituloDeSerie(serieId, titulo) {
+  const { data, error } = await supabase.from('google_seguimiento').update({ titulo }).eq('serie_id', serieId).select()
+  if (error) throw registrarError(error)
+  return data
+}
+
 // Deshacer: borra la fila y el evento vuelve a ser un pendiente virtual.
 export async function borrarSeguimiento(googleId) {
   const { error } = await supabase.from('google_seguimiento').delete().eq('google_event_id', googleId)

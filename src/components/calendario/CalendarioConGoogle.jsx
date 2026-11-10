@@ -194,6 +194,8 @@ export default function CalendarioConGoogle({
           sincronizar={sincronizar}
           seguimiento={seguimiento}
           onBorrar={borrar ? borrarPendiente : undefined}
+          // Un evento de todo el día cuyo día cambió tiene otro id: el panel sigue abierto sobre el evento editado.
+          onEventoEditado={(nuevo) => nuevo && setSeleccionado(nuevo.id)}
           onCerrar={() => setSeleccionado(null)}
         />
       )}

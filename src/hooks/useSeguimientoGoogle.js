@@ -8,6 +8,8 @@ import {
   borrarOculto,
   borrarSeguimiento,
   borrarSeguimientoDeSerie,
+  actualizarResumenSeguimiento,
+  actualizarTituloDeSerie,
   guardarColorEvento,
   guardarColorTitulo,
   guardarSeguimiento,
@@ -39,6 +41,7 @@ import { useAuth } from './useAuth'
 //   cambiarIncluirTodoElDia(valor)
 //   cambiarColor(x, colorId, alcance)   color propio: alcance 'evento' (solo esta ocurrencia) o 'titulo' (todos los
 //                                       eventos con este título normalizado). Ya no se crean colores por serie.
+//   actualizarResumen(evento, alcance)  tras editar el evento en Google, refresca su fila si ya estaba marcado
 //   quitarColor(x, alcance)             borra la fila de ese alcance ('evento', 'titulo' o 'serie', esta para filas
 //                                       antiguas); el evento vuelve al siguiente color que le toque
 export function useSeguimientoGoogle() {
@@ -112,6 +115,27 @@ export function useSeguimientoGoogle() {
     await borrarSeguimientoDeSerie(x.serieId)
     setFilas((actuales) => actuales.filter((f) => f.serie_id !== x.serieId))
   }, [])
+
+  // Tras editar un evento en Google (Parte C2): si ya estaba marcado, su fila guarda el título y el horario nuevos.
+  //   evento:  la ocurrencia ya editada (evento del calendario, de googleAEventos)
+  //   alcance: 'este' (título, inicio, fin) o 'serie' (solo el título de las ocurrencias marcadas de la serie)
+  // Solo actualiza filas que existen (nunca crea una ni la duplica). Los colores (google_colores) no se tocan.
+  const actualizarResumen = useCallback(
+    async (evento, alcance) => {
+      if (alcance === 'serie') {
+        if (!evento.serieId || !filas.some((f) => f.serie_id === evento.serieId)) return
+        const cambiadas = await actualizarTituloDeSerie(evento.serieId, evento.titulo)
+        const porId = new Map(cambiadas.map((f) => [f.google_event_id, f]))
+        setFilas((actuales) => actuales.map((f) => porId.get(f.google_event_id) ?? f))
+        return
+      }
+      if (!reglas.porId.has(evento.googleId)) return
+      const { titulo, inicio, fin, todo_el_dia } = resumenDeEvento(evento)
+      const fila = await actualizarResumenSeguimiento(evento.googleId, { titulo, inicio, fin, todo_el_dia })
+      if (fila) ponerFila(fila)
+    },
+    [filas, reglas, ponerFila],
+  )
 
   const volverAIncluir = useCallback(async (oculto) => {
     await borrarOculto(oculto.id)
@@ -190,6 +214,7 @@ export function useSeguimientoGoogle() {
     cambiarIncluirTodoElDia,
     cambiarColor,
     quitarColor,
+    actualizarResumen,
   }
 }
 

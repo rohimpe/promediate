@@ -47,6 +47,24 @@ export async function sincronizarConGoogle(accion, tareaId) {
   return data
 }
 
+// Edita un evento que ya existía en Google Calendar (Parte C2).
+//   eventoId: googleId de la ocurrencia · alcance: 'este' | 'serie' · etag: el que trae el evento
+//   cambios:  solo lo que cambió: { titulo?, lugar?, inicio?, fin? } (fechas en hora de Lima: 'YYYY-MM-DDTHH:mm', o
+//             'YYYY-MM-DD' con fin exclusivo si es de todo el día)
+// NUNCA lanza error: devuelve { estado, evento?, motivo? } con estado 'ok', 'no_conectado', 'reconectar',
+// 'permisos_incompletos', 'no_editable', 'conflicto' o 'error' (también si la función no respondió).
+// `evento` viene crudo de la función (lo convierte googleAEventos) y puede ser null tras editar una serie.
+export async function editarEventoGoogle({ eventoId, alcance, cambios, etag }) {
+  const { data, error } = await supabase.functions.invoke('google-calendar-editar', {
+    body: { evento_id: eventoId, alcance, cambios, etag },
+  })
+  if (error || !data?.estado) {
+    if (error) registrarError(error)
+    return { estado: 'error' }
+  }
+  return data
+}
+
 // Enlace directo a un evento del calendario principal del usuario. Es el mismo formato que usa Google
 // (htmlLink): base64 de "<id del evento> <id del calendario>", y el id del calendario principal es el correo.
 export function enlaceEventoGoogle(idEvento, emailGoogle) {

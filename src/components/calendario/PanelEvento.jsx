@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { camposCompletada, camposJustificada, camposPendiente } from '../../lib/checklist'
+import { MOTIVO_NO_EDITABLE } from '../../lib/edicionGoogle'
 import { fechaEnLima, formatearDiaLargo, formatearFechaHora, horaEnLima } from '../../lib/fechas'
 import AccionesChecklist from '../AccionesChecklist'
 import AdjuntosEntrega from '../archivos/AdjuntosEntrega'
@@ -8,6 +9,7 @@ import { IconoAdvertencia, ListaChoques } from '../AdvertenciaChoques'
 import TarjetaTarea from '../TarjetaTarea'
 import { IconoGoogle } from './BloqueEvento'
 import ColorEventoGoogle from './ColorEventoGoogle'
+import EditarEventoGoogle from './EditarEventoGoogle'
 import PendienteGoogle from './PendienteGoogle'
 
 // 'Lunes 9 de noviembre · 10:00–11:30' (hora de Lima). Si cruza la medianoche, muestra ambas fechas.
@@ -34,11 +36,27 @@ function textoHorario(evento) {
 //   seguimiento: lo que devuelve useSeguimientoGoogle(); sin él, los eventos de Google son de solo lectura
 //   onBorrar: (tarea) => Promise; si se pasa, los pendientes de la app llevan "Borrar" (lanza error si no se pudo).
 //             Los eventos de Google que no creó la app nunca lo llevan: se quitan de tus pendientes.
+//   onEventoEditado: (nuevo) => … tras editar un evento de Google (nuevo = la ocurrencia editada o null). Los eventos
+//             de Google con `editable` llevan "Editar" (EditarEventoGoogle); los demás, una línea con el motivo.
+//   "Editar" de un pendiente de la app lleva a /tareas/:id/editar y, al guardar o cancelar, vuelve a esta página.
 //   onCerrar: se llama al cerrar por cualquier vía (botón, Esc o clic afuera)
-export default function PanelEvento({ evento, tarea, choques = [], cambiar, sincronizar, seguimiento, onBorrar, onCerrar }) {
+export default function PanelEvento({
+  evento,
+  tarea,
+  choques = [],
+  cambiar,
+  sincronizar,
+  seguimiento,
+  onBorrar,
+  onEventoEditado,
+  onCerrar,
+}) {
   const dialogRef = useRef(null)
+  const { pathname } = useLocation()
   const [borrando, setBorrando] = useState(false)
   const [errorBorrar, setErrorBorrar] = useState('')
+  const [editando, setEditando] = useState(false) // formulario de un evento de Google abierto
+  const [mensaje, setMensaje] = useState('') // "Cambios guardados…" tras editar
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -85,6 +103,7 @@ export default function PanelEvento({ evento, tarea, choques = [], cambiar, sinc
                   <div className="flex gap-2">
                     <Link
                       to={`/tareas/${tarea.id}/editar`}
+                      state={{ volverA: pathname }}
                       className="inline-block rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
                     >
                       Editar
@@ -111,7 +130,19 @@ export default function PanelEvento({ evento, tarea, choques = [], cambiar, sinc
             />
           </ul>
         ) : (
-          // Eventos que no son pendientes de la app (los de Google): solo lectura.
+          // Eventos que no son pendientes de la app (los de Google). Si son editables, "Editar" abre el formulario.
+          editando ? (
+            <EditarEventoGoogle
+              evento={evento}
+              seguimiento={seguimiento}
+              onCancelar={() => setEditando(false)}
+              onGuardado={(nuevo) => {
+                setEditando(false)
+                setMensaje('Cambios guardados en Google Calendar.')
+                onEventoEditado?.(nuevo)
+              }}
+            />
+          ) : (
           <div>
             {evento.origen === 'google' && (
               <p className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -134,11 +165,35 @@ export default function PanelEvento({ evento, tarea, choques = [], cambiar, sinc
                     Abrir en Google Calendar
                   </a>
                 )}
+                {evento.editable ? (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMensaje('')
+                        setEditando(true)
+                      }}
+                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+                    >
+                      Editar
+                    </button>
+                  </div>
+                ) : (
+                  MOTIVO_NO_EDITABLE[evento.motivoNoEditable] && (
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{MOTIVO_NO_EDITABLE[evento.motivoNoEditable]}</p>
+                  )
+                )}
+                {mensaje && (
+                  <p role="status" className="text-sm text-green-700 dark:text-green-400">
+                    {mensaje}
+                  </p>
+                )}
               </div>
             )}
             {evento.origen === 'google' && seguimiento && <ColorEventoGoogle evento={evento} seguimiento={seguimiento} />}
             {evento.origen === 'google' && seguimiento && <PendienteGoogle evento={evento} seguimiento={seguimiento} />}
           </div>
+          )
         )}
 
         {choques.length > 0 && (

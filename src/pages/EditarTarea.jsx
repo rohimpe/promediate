@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import PendienteForm from '../components/PendienteForm'
 import { actualizarPendiente } from '../lib/googleSync'
 import { obtenerTarea } from '../lib/tasksApi'
@@ -7,6 +7,13 @@ import { obtenerTarea } from '../lib/tasksApi'
 export default function EditarTarea() {
   const { id } = useParams()
   const navigate = useNavigate()
+  // Si se llegó desde el panel del calendario (Calendario o Inicio), al guardar o cancelar se vuelve allí.
+  // Solo rutas internas ('/…', no '//…'); si no, a Pendientes como siempre.
+  const { state } = useLocation()
+  const volverA =
+    typeof state?.volverA === 'string' && state.volverA.startsWith('/') && !state.volverA.startsWith('//')
+      ? state.volverA
+      : '/tareas'
   const [tarea, setTarea] = useState(null)
   const [estado, setEstado] = useState('cargando') // 'cargando' | 'listo' | 'no-encontrada' | 'error'
 
@@ -45,7 +52,12 @@ export default function EditarTarea() {
   return (
     <>
       <h1 className="mb-4 text-2xl font-bold">Editar pendiente</h1>
-      <PendienteForm inicial={tarea} onGuardar={guardar} onGuardado={() => navigate('/tareas')} />
+      <PendienteForm
+        inicial={tarea}
+        onGuardar={guardar}
+        onGuardado={() => navigate(volverA)}
+        onCancelar={volverA !== '/tareas' ? () => navigate(volverA) : undefined}
+      />
     </>
   )
 }

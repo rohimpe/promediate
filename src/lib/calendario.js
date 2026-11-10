@@ -33,6 +33,9 @@ import { HORA_ENTREGA_POR_DEFECTO } from './tipos'
 //   lugar       texto o null
 //   enlace      dirección https de Google Calendar o null
 //   enPendientes true si entra a Hoy y Pendientes (ver seguimiento.js); entonces `estado` es el de sus pendientes
+//   etag        versión del evento en Google (para editarlo sin pisar cambios hechos allí)
+//   editable    true si se puede editar desde la app; si no, motivoNoEditable: 'invitados' | 'organizador' | 'app'
+//   diasGoogle  solo los de todo el día: { inicio, fin } originales ('YYYY-MM-DD', fin exclusivo)
 // ---------------------------------------------------------------------
 
 // Color fijo de las actividades (las entregas usan el color de su curso).
@@ -148,6 +151,13 @@ export function googleAEventos(lista) {
       lugar: g.lugar ?? null,
       // Solo enlaces https: el enlace viene de fuera y acaba en un <a href>.
       enlace: typeof g.enlace === 'string' && g.enlace.startsWith('https://') ? g.enlace : null,
+      // Para editarlo desde la app (google-calendar-editar). Si la función aún no se redesplegó, no llegan: no editable.
+      etag: typeof g.etag === 'string' ? g.etag : null,
+      editable: g.editable === true && typeof g.etag === 'string',
+      motivoNoEditable: g.motivoNoEditable ?? null,
+      // Fechas originales de un evento de todo el día ('YYYY-MM-DD', fin exclusivo): el evento llega partido por día y
+      // el formulario de edición necesita saber dónde empieza y cuántos días dura.
+      diasGoogle: g.todoElDia ? { inicio: g.inicio, fin: g.fin } : null,
     }
 
     if (g.todoElDia) {

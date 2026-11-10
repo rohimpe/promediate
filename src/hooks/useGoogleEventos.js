@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { googleAEventos, rangoAInstantes } from '../lib/calendario'
+import { fechaEnLima } from '../lib/fechas'
 import { obtenerEventosGoogle } from '../lib/googleApi'
 import { useAuth } from './useAuth'
 
@@ -34,6 +35,38 @@ function guardarEnCache(userId, entrada) {
 export function invalidarEventosGoogle() {
   cache = { userId: null, entradas: [] }
   pendientes = []
+}
+
+// Hooks montados (calendario, Hoy, Pendientes…) que quieren enterarse cuando la caché cambia por una edición.
+// Cada uno recibe 'cambio' (relee la caché) o 'recargar' (vuelve a pedir a Google).
+const oyentes = new Set()
+function avisar(tipo) {
+  for (const oyente of oyentes) oyente(tipo)
+}
+
+// Olvida todo y hace que TODOS los hooks montados vuelvan a pedir sus eventos (lo que esté a la vista se sigue
+// mostrando hasta que llega la respuesta). Es lo que hace "Actualizar".
+export function recargarEventosGoogle() {
+  invalidarEventosGoogle()
+  avisar('recargar')
+}
+
+// Reemplaza en la caché un evento recién editado (crudo, como lo devuelve la función) y avisa a los hooks:
+// así el calendario, Hoy y Pendientes lo muestran cambiado sin volver a llamar a Google.
+export function aplicarEventoEditado(userId, crudo) {
+  if (cache.userId !== userId) return
+  const nuevos = googleAEventos([crudo]) // uno por día si es de todo el día y dura varios
+  cache.entradas = cache.entradas.map((entrada) => {
+    if (entrada.estado !== 'ok') return entrada
+    const dentro = nuevos.filter((e) => {
+      const dia = fechaEnLima(e.inicio)
+      return dia >= entrada.desde && dia <= entrada.hasta
+    })
+    const resto = entrada.eventos.filter((e) => e.googleId !== crudo.id)
+    // Objeto nuevo: React detecta el cambio en los hooks que guardaron la entrada.
+    return { ...entrada, eventos: [...resto, ...dentro].sort((a, b) => a.inicio - b.inicio) }
+  })
+  avisar('cambio')
 }
 
 // Pide el rango a la Edge Function (o se une a la llamada que ya está en curso) y lo guarda.
@@ -116,10 +149,21 @@ export function useGoogleEventos(rango, activo = true) {
     return () => document.removeEventListener('visibilitychange', alVolver)
   }, [activo, userId, desde, hasta])
 
-  const actualizar = useCallback(() => {
-    invalidarEventosGoogle()
-    setVersion((v) => v + 1)
-  }, [])
+  // Avisos de la caché: tras editar un evento se relee lo guardado (sin llamar a Google); tras "Actualizar" en
+  // cualquier lugar, se vuelve a pedir. Si lo guardado ya venció, también se pide de nuevo.
+  useEffect(() => {
+    if (!activo || !userId || !desde) return
+    function alAviso(tipo) {
+      const entrada = tipo === 'cambio' ? buscarEnCache(userId, desde, hasta) : null
+      if (entrada) setResultado((r) => ({ ...r, entrada }))
+      else setVersion((v) => v + 1)
+    }
+    oyentes.add(alAviso)
+    return () => oyentes.delete(alAviso)
+  }, [activo, userId, desde, hasta])
+
+  // Vuelve a pedir en TODOS los hooks montados (p. ej. el calendario y la tarjeta Hoy del Inicio a la vez).
+  const actualizar = useCallback(() => recargarEventosGoogle(), [])
 
   const visibles = activo ? resultado.entrada : SIN_DATOS
   return {
